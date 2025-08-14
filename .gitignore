@@ -48,6 +48,35 @@
 **/ssh_*.py
 **/*ssh*.py
 **/test_ssh*.py
+
+# =============================================================================
+# VALIDATION SECURITY - NEVER COMMIT THESE
+# =============================================================================
+
+# SSH credentials and connection details
+**/.ssh/
+**/ssh_config*
+**/validation_secrets*
+**/rmark_credentials*
+**/*_credentials.yaml
+**/*_secrets.yaml
+**/*_secrets.json
+**/*.pem
+**/*.key
+**/id_rsa*
+**/known_hosts*
+
+# Environment-specific configuration with credentials
+**/validation_config_personal.yaml
+**/validation_config_private.yaml
+**/config/secrets/
+**/config/credentials/
+
+# Validation temporary files that might contain sensitive info
+**/validation_temp/
+**/rmark_temp/
+**/validation_cache/
+**/temp_validation_*/
 **/*winbox*.py
 **/*connection*.py
 
