@@ -241,6 +241,9 @@ credentials.json
 *.sublime-project
 *.sublime-workspace
 
+# Claude settings (may contain sensitive connection details)
+.claude/
+
 # =============================================================================
 # ALLOW SPECIFIC SAFE FILES
 # =============================================================================

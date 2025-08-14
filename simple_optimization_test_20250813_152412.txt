@@ -1,0 +1,28 @@
+
+Pradel-JAX Optimization Framework Test Results
+============================================
+
+Test Timestamp: 2025-08-13 15:24:12
+Datasets: dipper, wf_dat
+
+Overall Performance:
+- Datasets Tested: 2
+- Single Test Success Rate: 100.0%
+
+Strategy Performance:
+
+scipy_lbfgs:
+  Success Rate: 0.0% (0/2)
+
+scipy_slsqp:
+  Success Rate: 0.0% (0/2)
+
+jax_adam:
+  Success Rate: 0.0% (0/2)
+
+multi_start:
+  Success Rate: 0.0% (0/2)
+
+Parameter Estimates (successful optimizations):
+  dipper: φ=0.500, p=0.378, f=0.368
+  wf_dat: φ=0.500, p=0.378, f=0.368
