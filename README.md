@@ -6,6 +6,15 @@
 
 A modern, extensible framework for capture-recapture analysis using JAX, designed to be robust, flexible, and user-friendly.
 
+## 📚 Documentation
+
+**👉 [Complete Documentation](docs/README.md)** | **🚀 [Quick Start](docs/tutorials/quickstart.md)** | **🏗️ [Architecture](docs/user-guide/architecture.md)**
+
+- **[User Guide](docs/user-guide/)** - Installation, model specification, optimization strategies
+- **[Tutorials](docs/tutorials/)** - Step-by-step examples and walkthroughs  
+- **[API Reference](docs/api/)** - Technical documentation for all modules
+- **[Development](docs/development/)** - Contributing guidelines and setup instructions
+
 ## 🚀 Features
 
 ### ✅ Implemented (v2.0.0-alpha)
@@ -82,23 +91,28 @@ pradel_jax/
 
 ## 🧪 Quick Test
 
+```bash
+# Run the test suite
+python -m pytest tests/
+
+# Run a specific integration test  
+python -m pytest tests/integration/test_optimization_minimal.py -v
+
+# Check test coverage
+python -m pytest --cov=pradel_jax --cov-report=html
+```
+
+Or test the framework directly:
 ```python
 import pradel_jax as pj
 
-# Test the new architecture
+# Test with sample data
 data_context = pj.load_data("data/test_datasets/dipper_dataset.csv")
 print(f"Loaded {data_context.n_individuals} individuals with {data_context.n_occasions} occasions")
 
-# Configuration
-config = pj.get_config()
-print(f"Using {config.optimization.default_strategy} optimization")
-
-# Error handling demonstration
-try:
-    pj.load_data("nonexistent_file.csv")
-except pj.DataFormatError as e:
-    print(f"Error: {e}")
-    print(f"Suggestions: {e.suggestions}")
+# Run a simple optimization
+result = pj.fit_simple_model(data_context)
+print(f"Optimization successful: {result.success}")
 ```
 
 ## 📊 Architecture Comparison
@@ -152,36 +166,34 @@ python examples/test_new_architecture.py
 
 ## 🎯 Next 10 Priority Tasks
 
-> **📅 Last Updated:** August 14, 2025  
-> **Status:** Optimization framework integration complete, repository published securely
+> **📅 Last Updated:** August 14, 2025n framework integration complete, repository published securely
 
 ### ⭐ High Priority (Next 2-3 weeks)
 
-1. **📖 Enhanced Documentation & Examples** - Create comprehensive tutorials, API docs, and practical usage examples for the optimization framework
-2. **📊 Performance Benchmarking** - Validate optimization results against existing RMark validation data and historical test cases
-3. **🔬 RMark Parameter Validation** - Implement side-by-side parameter estimation comparison with RMark to ensure statistical consistency
+6. **📊 Performance Benchmarking** - Validate optimization results against existing RMark validation data and historical test cases
+7. **🔬 RMark Parameter Validation** - Implement side-by-side parameter estimation comparison with RMark to ensure statistical consistency
 
 ### 🔧 Medium Priority (Next 1-2 months)
 
-4. **📈 Large-Scale Testing** - Test optimization framework performance and memory usage on realistic large datasets (wf.dat and similar)
-5. **🚀 CI/CD Pipeline** - Set up GitHub Actions for automated testing, linting, and continuous integration
-6. **🎨 Production API Wrappers** - Create simplified interfaces and convenience functions for common modeling workflows
-7. **📋 Model Selection Tools** - Implement AIC/BIC comparison, convergence diagnostics, and automated model selection
+8. **📈 Large-Scale Testing** - Test optimization framework performance and memory usage on realistic large datasets (wf.dat and similar)
+9. **🚀 CI/CD Pipeline** - Set up GitHub Actions for automated testing, linting, and continuous integration
+10. **🎨 Production API Wrappers** - Create simplified interfaces and convenience functions for common modeling workflows
+11. **📋 Model Selection Tools** - Implement AIC/BIC comparison, convergence diagnostics, and automated model selection
 
 ### 🎯 Lower Priority (Next 2-3 months)
 
-8. **🔄 Batch Processing** - Add capabilities for processing multiple datasets and model comparisons in parallel
-9. **📊 Visualization Dashboard** - Create diagnostic plots, convergence monitoring, and result visualization tools
-10. **🌐 Community Features** - Add discussion templates, contribution guidelines, and issue templates for GitHub collaboration
+12. **🔄 Batch Processing** - Add capabilities for processing multiple datasets and model comparisons in parallel
+13. **📊 Visualization Dashboard** - Create diagnostic plots, convergence monitoring, and result visualization tools
+14. **🔗 R Integration via Reticulate** - Create R package wrapper to use Pradel-JAX from R through reticulate interface
+15. **🌐 Community Features** - Add discussion templates, contribution guidelines, and issue templates for GitHub collaboration
 
 ### 📝 Progress Tracking
 
 **✅ Recently Completed:**
-- Complete optimization framework integration *(August 14, 2025)*
-- Secure GitHub repository setup with comprehensive data protection *(August 14, 2025)*
+- Create comprehensive tutorials, API docs, and practical usage examples for the optimization framework *(August 14, 2025)*
 - Full integration test suite validation *(August 14, 2025)*
 
-**🚧 Current Focus:** Enhanced documentation and performance validation
+**🚧 Current Focus:** Enhanced documentation and testing organizationnhanced documentation and performance validation
 
 ---
 
