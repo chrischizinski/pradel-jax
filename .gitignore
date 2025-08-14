@@ -1,0 +1,257 @@
+
+# =============================================================================
+# PRADEL-JAX SECURITY .GITIGNORE
+# =============================================================================
+# This file protects sensitive data while allowing public research code sharing
+#
+# CRITICAL: DO NOT REMOVE THESE PROTECTIONS
+# These patterns prevent upload of:
+# - Nebraska (NE) data with person_id and FUZZY identifiers  
+# - South Dakota (SD) data with customer_id
+# - SSH connection details and credentials
+# - Temporary files with potentially sensitive content
+# =============================================================================
+
+# =============================================================================
+# SENSITIVE DATA FILES - NEVER COMMIT THESE
+# =============================================================================
+
+# Nebraska (NE) data - contains person_id and FUZZY identifiers
+**/encounter_histories_ne*.csv
+**/encounter_histories_ne*.dat
+**/encounter_histories_ne*.xlsx
+**/encounter_histories_ne*.xls
+**/*_ne_*.csv
+**/*_ne_*.dat
+**/ne_*.csv
+**/ne_*.dat
+
+# South Dakota (SD) data - contains customer_id
+**/encounter_histories_sd*.csv
+**/encounter_histories_sd*.dat
+**/encounter_histories_sd*.xlsx
+**/encounter_histories_sd*.xls
+**/*_sd_*.csv
+**/*_sd_*.dat
+**/sd_*.csv
+**/sd_*.dat
+
+# Any files containing sensitive identifiers
+**/*person_id*.csv
+**/*customer_id*.csv
+**/*FUZZY*.csv
+**/*hunter*.csv
+**/*Hunter*.csv
+**/*HUNTER*.csv
+
+# SSH connection files and scripts
+**/ssh_*.py
+**/*ssh*.py
+**/test_ssh*.py
+**/*winbox*.py
+**/*connection*.py
+
+# Files with hardcoded credentials/IPs (be extra careful)
+**/*192.168*.py
+**/*host*.py
+**/*chris*.py
+
+# Real data validation files that may contain sensitive info
+**/validation_scripts/*real*.csv
+**/validation_scripts/*ne*.csv  
+**/validation_scripts/*sd*.csv
+**/validation_scripts/ssh_*.py
+
+# =============================================================================
+# SAFE DATA FILES - THESE CAN BE COMMITTED
+# =============================================================================
+# The following are explicitly allowed (remove from ignore):
+!**/dipper*.csv        # Dipper data is public research data
+!**/dipper*.dat
+!**/test_datasets/dipper*.csv
+!**/wf.dat.csv         # This appears to be synthetic/test data
+!**/test_datasets/wf.dat.csv
+
+# =============================================================================
+# STANDARD PYTHON .GITIGNORE
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pradel_env/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# =============================================================================
+# R FILES
+# =============================================================================
+# History files
+.Rhistory
+.Rapp.history
+
+# Session Data files
+.RData
+.RDataTmp
+
+# User-specific files
+.Ruserdata
+
+# RStudio files
+.Rproj.user/
+
+# R Environment Variables
+.Renviron
+
+# RDS files that might contain sensitive data
+*.rds
+*.RDS
+
+# =============================================================================
+# TEMPORARY AND CACHE FILES
+# =============================================================================
+*.tmp
+*.temp
+*temp*
+*.cache
+*cache*
+*.bak
+*.backup
+*backup*
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Mark/RMark temporary files
+mark*.tmp
+mark*.inp
+markxxx*
+
+# Log files
+*.log
+*.out
+*.err
+
+# MLflow artifacts (may contain model data)
+mlruns/
+mlartifacts/
+.mlflow/
+
+# Optimization experiment results that may contain sensitive data patterns
+optimization_*results*.json
+optimization_*results*.txt
+*_test_results_*.json
+*_test_results_*.txt
+
+# System files
+system_analysis_report_*.txt
+
+# =============================================================================
+# PROJECT-SPECIFIC EXCLUDES
+# =============================================================================
+
+# Archive directory contains old code and potentially sensitive data
+archive/
+
+# Results directory may contain sensitive analysis outputs
+results/
+
+# Configuration files that might contain credentials
+config.json
+secrets.json
+credentials.json
+*.key
+*.pem
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Large data files (potentially sensitive)
+*.zip
+*.tar.gz
+*.tar.bz2
+*.7z
+*.rar
+
+# IDE files
+.vscode/settings.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# =============================================================================
+# ALLOW SPECIFIC SAFE FILES
+# =============================================================================
+# Override the blanket CSV exclusion for known safe files
+!pradel_jax/**/*.csv       # Allow any CSV files in the main package
+!examples/**/*.csv         # Allow example data
+!docs/**/*.csv            # Allow documentation data
+!tests/**/*.csv           # Allow test data
+!README.md
+!*.py
+!*.md
+!requirements*.txt
+!pyproject.toml
+!setup.py

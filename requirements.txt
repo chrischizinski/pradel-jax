@@ -1,0 +1,38 @@
+# Core dependencies
+jax>=0.4.20
+jaxlib>=0.4.20
+jaxopt>=0.8.0
+optax>=0.1.7
+scipy>=1.7.0
+numpy>=1.21.0
+pandas>=1.3.0
+patsy>=0.5.0
+tqdm>=4.64.0
+
+# Configuration and validation
+pydantic>=2.0.0
+pyyaml>=6.0
+
+# Optimization Framework Dependencies
+# Global optimization and hyperparameter tuning
+scikit-optimize>=0.9.0  # Bayesian optimization
+optuna>=3.0.0  # Hyperparameter optimization framework
+
+# Experiment tracking and monitoring
+mlflow>=2.7.0  # Experiment tracking (optional but recommended)
+
+# Utilities
+matplotlib>=3.7.0  # For plotting
+seaborn>=0.12.0  # Statistical plots
+psutil>=5.9.0  # System monitoring (required for resource monitoring)
+
+# Machine Learning (for imputation)
+scikit-learn>=1.3.0  # Imputation methods
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-benchmark>=4.0.0
+
+# Optional: For R integration
+rpy2>=3.5.0  # If you want to call R from Python
