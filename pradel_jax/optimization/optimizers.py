@@ -365,7 +365,7 @@ class JAXAdamOptimizer(BaseOptimizer):
         # Optimization loop
         for iteration in range(self.config.max_iter):
             params, opt_state, loss, grads = update_step(params, opt_state)
-            loss_history.append(float(loss))
+            loss_history.append(loss.item())  # Use .item() instead of float() for JAX arrays
             
             # Check convergence
             grad_norm = jnp.linalg.norm(grads)
@@ -379,7 +379,7 @@ class JAXAdamOptimizer(BaseOptimizer):
         result = OptimizationResult(
             success=grad_norm < self.config.tolerance,
             x=np.array(params),
-            fun=float(loss),
+            fun=loss.item(),
             nit=iteration + 1,
             nfev=iteration + 1,  # One function eval per iteration
             message="Adam optimization completed",
@@ -414,7 +414,7 @@ class JAXAdamOptimizer(BaseOptimizer):
         for t in range(1, self.config.max_iter + 1):
             loss = objective(params)
             grads = gradient(params)
-            loss_history.append(float(loss))
+            loss_history.append(loss.item())  # Use .item() instead of float() for JAX arrays
             
             # Adam updates
             m = beta1 * m + (1 - beta1) * grads
@@ -438,7 +438,7 @@ class JAXAdamOptimizer(BaseOptimizer):
         return OptimizationResult(
             success=grad_norm < self.config.tolerance,
             x=np.array(params),
-            fun=float(loss),
+            fun=loss.item(),
             nit=t,
             nfev=t,
             message="Basic Adam optimization completed",
@@ -739,7 +739,9 @@ def create_optimizer(
         return optimizer_classes[strategy](config)
     elif strategy == OptimizationStrategy.MULTI_START:
         base_optimizer = ScipyLBFGSOptimizer(config)
-        return MultiStartOptimizer(config, base_optimizer, **kwargs)
+        # Extract n_starts from kwargs if provided, ignore other kwargs like bounds
+        n_starts = kwargs.get('n_starts', 5)
+        return MultiStartOptimizer(config, base_optimizer, n_starts=n_starts)
     
     # Large-scale optimizers - import here to avoid circular imports
     elif strategy in [OptimizationStrategy.MINI_BATCH_SGD, 
