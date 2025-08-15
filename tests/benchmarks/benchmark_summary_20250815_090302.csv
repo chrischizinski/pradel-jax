@@ -1,0 +1,4 @@
+module,success,duration_seconds,return_code,timestamp
+performance_quick,True,35.286525249975966,0,20250815_090302
+memory_quick,True,6.7550475830212235,0,20250815_090302
+convergence_quick,False,5.533935042010853,1,20250815_090302

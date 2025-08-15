@@ -550,7 +550,7 @@ class StrategySelector:
                 max_iter=1500, tolerance=1e-8, init_scale=0.05
             ),
             OptimizationStrategy.JAX_ADAM: OptimizationConfig(
-                max_iter=2000, tolerance=1e-6, learning_rate=0.01, init_scale=0.1
+                max_iter=10000, tolerance=1e-2, learning_rate=0.00001, init_scale=0.1
             ),
             OptimizationStrategy.MULTI_START: OptimizationConfig(
                 max_iter=1000, tolerance=1e-8, init_scale=0.05, verbose=True

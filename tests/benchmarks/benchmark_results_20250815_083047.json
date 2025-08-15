@@ -1,0 +1,26 @@
+{
+  "performance_quick": {
+    "module": "test_optimization_performance",
+    "success": false,
+    "duration": 0.19621037499746308,
+    "stdout": "",
+    "stderr": "ERROR: /Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/pytest.ini:46: unexpected line: ']'\n\n",
+    "return_code": 4
+  },
+  "memory_quick": {
+    "module": "test_memory_performance",
+    "success": false,
+    "duration": 0.10661112499656156,
+    "stdout": "",
+    "stderr": "ERROR: /Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/pytest.ini:46: unexpected line: ']'\n\n",
+    "return_code": 4
+  },
+  "convergence_quick": {
+    "module": "test_convergence_analysis",
+    "success": false,
+    "duration": 0.08127508399775252,
+    "stdout": "",
+    "stderr": "ERROR: /Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/pytest.ini:46: unexpected line: ']'\n\n",
+    "return_code": 4
+  }
+}
