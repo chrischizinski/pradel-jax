@@ -310,6 +310,8 @@ class JAXAdamOptimizer(BaseOptimizer):
     
     Modern gradient-based optimization following PyTorch/TensorFlow patterns.
     Excellent for large-scale problems and GPU acceleration.
+    
+    Note: For advanced features, use AdaptiveJAXAdamOptimizer from adaptive_adam module.
     """
     
     def __init__(self, config: OptimizationConfig):
@@ -710,6 +712,218 @@ class OptunaOptimizer(BaseOptimizer):
             )
 
 
+class HybridOptimizer(BaseOptimizer):
+    """
+    Hybrid optimization combining fast scipy methods with reliable multi-start fallback.
+    
+    Strategy:
+    1. Quick attempt with L-BFGS-B (most reliable for well-behaved problems)
+    2. If unsuccessful or poor convergence, fallback to multi-start optimization
+    3. Optional final refinement with high-precision settings
+    
+    This approach balances speed and reliability, giving fast results for easy problems
+    while ensuring robust convergence for difficult cases.
+    """
+    
+    def __init__(
+        self, 
+        config: OptimizationConfig,
+        quick_max_iter: int = 500,
+        fallback_n_starts: int = 5,
+        convergence_threshold: float = 1e-6,
+        enable_refinement: bool = True
+    ):
+        super().__init__(config)
+        self.quick_max_iter = quick_max_iter
+        self.fallback_n_starts = fallback_n_starts
+        self.convergence_threshold = convergence_threshold
+        self.enable_refinement = enable_refinement
+        
+        # Create optimizers for each phase
+        quick_config = config.copy_with_overrides(
+            max_iter=quick_max_iter,
+            tolerance=convergence_threshold * 10  # Relaxed for quick phase
+        )
+        self.quick_optimizer = ScipyLBFGSOptimizer(quick_config)
+        
+        fallback_config = config.copy_with_overrides(
+            max_iter=config.max_iter,
+            tolerance=convergence_threshold
+        )
+        base_optimizer = ScipyLBFGSOptimizer(fallback_config)
+        self.fallback_optimizer = MultiStartOptimizer(
+            fallback_config, 
+            base_optimizer, 
+            n_starts=fallback_n_starts
+        )
+        
+        if enable_refinement:
+            refinement_config = config.copy_with_overrides(
+                max_iter=200,
+                tolerance=config.tolerance  # Highest precision
+            )
+            self.refinement_optimizer = ScipySLSQPOptimizer(refinement_config)
+        else:
+            self.refinement_optimizer = None
+    
+    def minimize(
+        self,
+        objective: Callable,
+        x0: np.ndarray,
+        bounds: Optional[List[Tuple[float, float]]] = None,
+        gradient: Optional[Callable] = None,
+        **kwargs
+    ) -> OptimizationResult:
+        """
+        Minimize using hybrid approach: quick attempt -> fallback -> refinement.
+        """
+        start_time = time.time()
+        total_nfev = 0
+        
+        logger.info("Starting hybrid optimization: Phase 1 - Quick L-BFGS-B attempt")
+        
+        # Phase 1: Quick attempt with L-BFGS-B
+        try:
+            quick_result = self.quick_optimizer.minimize(
+                objective=objective,
+                x0=x0,
+                bounds=bounds,
+                gradient=gradient,
+                **kwargs
+            )
+            total_nfev += quick_result.nfev
+            
+            # Check if quick result is satisfactory
+            if self._is_satisfactory_result(quick_result):
+                logger.info(f"Phase 1 successful: converged in {quick_result.nit} iterations")
+                
+                # Optional refinement
+                if self.enable_refinement and self.refinement_optimizer:
+                    logger.info("Phase 3 - Refinement with SLSQP")
+                    refinement_result = self._refine_solution(
+                        quick_result, objective, bounds, gradient, **kwargs
+                    )
+                    total_nfev += refinement_result.nfev
+                    
+                    if refinement_result.success and refinement_result.fun <= quick_result.fun:
+                        logger.info(f"Refinement improved solution: {quick_result.fun:.6f} -> {refinement_result.fun:.6f}")
+                        return self._finalize_result(refinement_result, start_time, total_nfev, "hybrid_quick_refined")
+                
+                return self._finalize_result(quick_result, start_time, total_nfev, "hybrid_quick")
+                
+        except Exception as e:
+            logger.warning(f"Phase 1 quick optimization failed: {e}")
+        
+        # Phase 2: Multi-start fallback
+        logger.info("Phase 2 - Multi-start fallback optimization")
+        try:
+            fallback_result = self.fallback_optimizer.minimize(
+                objective=objective,
+                x0=x0,
+                bounds=bounds,
+                gradient=gradient,
+                **kwargs
+            )
+            total_nfev += fallback_result.nfev
+            
+            if fallback_result.success:
+                logger.info(f"Phase 2 successful: converged with objective {fallback_result.fun:.6f}")
+                
+                # Optional refinement
+                if self.enable_refinement and self.refinement_optimizer:
+                    logger.info("Phase 3 - Refinement with SLSQP")
+                    refinement_result = self._refine_solution(
+                        fallback_result, objective, bounds, gradient, **kwargs
+                    )
+                    total_nfev += refinement_result.nfev
+                    
+                    if refinement_result.success and refinement_result.fun <= fallback_result.fun:
+                        logger.info(f"Refinement improved solution: {fallback_result.fun:.6f} -> {refinement_result.fun:.6f}")
+                        return self._finalize_result(refinement_result, start_time, total_nfev, "hybrid_multistart_refined")
+                
+                return self._finalize_result(fallback_result, start_time, total_nfev, "hybrid_multistart")
+            else:
+                logger.warning("Phase 2 multi-start optimization failed")
+                
+        except Exception as e:
+            logger.error(f"Phase 2 multi-start optimization failed: {e}")
+        
+        # If all phases fail, return failure result
+        logger.error("All hybrid optimization phases failed")
+        return OptimizationResult(
+            success=False,
+            x=x0,
+            fun=float('inf'),
+            nit=0,
+            nfev=total_nfev,
+            message="All hybrid optimization phases failed",
+            optimization_time=time.time() - start_time,
+            strategy_used='hybrid_failed'
+        )
+    
+    def _is_satisfactory_result(self, result: OptimizationResult) -> bool:
+        """Check if optimization result meets satisfaction criteria."""
+        if not result.success:
+            return False
+        
+        # Check gradient norm if available
+        if result.jac is not None:
+            grad_norm = np.linalg.norm(result.jac)
+            if grad_norm > self.convergence_threshold * 10:
+                logger.debug(f"Quick result has high gradient norm: {grad_norm:.2e}")
+                return False
+        
+        # Check for reasonable function value (not too high)
+        if result.fun > 1e6:
+            logger.debug(f"Quick result has suspiciously high objective value: {result.fun:.2e}")
+            return False
+        
+        return True
+    
+    def _refine_solution(
+        self,
+        initial_result: OptimizationResult,
+        objective: Callable,
+        bounds: Optional[List[Tuple[float, float]]],
+        gradient: Optional[Callable],
+        **kwargs
+    ) -> OptimizationResult:
+        """Refine solution using high-precision optimizer."""
+        try:
+            return self.refinement_optimizer.minimize(
+                objective=objective,
+                x0=initial_result.x,
+                bounds=bounds,
+                gradient=gradient,
+                **kwargs
+            )
+        except Exception as e:
+            logger.warning(f"Refinement phase failed: {e}")
+            return initial_result  # Return original result if refinement fails
+    
+    def _finalize_result(
+        self,
+        result: OptimizationResult,
+        start_time: float,
+        total_nfev: int,
+        strategy_used: str
+    ) -> OptimizationResult:
+        """Finalize optimization result with hybrid-specific metadata."""
+        return OptimizationResult(
+            success=result.success,
+            x=result.x,
+            fun=result.fun,
+            nit=result.nit,
+            nfev=total_nfev,  # Total function evaluations across all phases
+            message=f"Hybrid optimization completed ({strategy_used})",
+            jac=result.jac,
+            hess_inv=result.hess_inv,
+            optimization_time=time.time() - start_time,
+            strategy_used=strategy_used,
+            convergence_history=getattr(result, 'convergence_history', None)
+        )
+
+
 # Factory function for creating optimizers
 def create_optimizer(
     strategy: Union[OptimizationStrategy, str], 
@@ -742,6 +956,47 @@ def create_optimizer(
         # Extract n_starts from kwargs if provided, ignore other kwargs like bounds
         n_starts = kwargs.get('n_starts', 5)
         return MultiStartOptimizer(config, base_optimizer, n_starts=n_starts)
+    elif strategy == OptimizationStrategy.HYBRID:
+        # Extract hybrid-specific parameters from kwargs
+        quick_max_iter = kwargs.get('quick_max_iter', 500)
+        fallback_n_starts = kwargs.get('fallback_n_starts', 5)
+        convergence_threshold = kwargs.get('convergence_threshold', 1e-6)
+        enable_refinement = kwargs.get('enable_refinement', True)
+        return HybridOptimizer(
+            config, 
+            quick_max_iter=quick_max_iter,
+            fallback_n_starts=fallback_n_starts,
+            convergence_threshold=convergence_threshold,
+            enable_refinement=enable_refinement
+        )
+    elif strategy == OptimizationStrategy.JAX_ADAM_ADAPTIVE:
+        # Create adaptive Adam optimizer with optimized configuration
+        from .adaptive_adam import AdaptiveJAXAdamOptimizer, AdaptiveAdamConfig, get_optimized_adam_config
+        
+        # Convert to adaptive config if needed
+        if isinstance(config, OptimizationConfig) and not isinstance(config, AdaptiveAdamConfig):
+            # Use problem characteristics if available in kwargs
+            characteristics = kwargs.get('characteristics', None)
+            if characteristics:
+                adaptive_config = get_optimized_adam_config(characteristics)
+                # Override with any specified config values
+                adaptive_config.max_iter = config.max_iter
+                adaptive_config.tolerance = config.tolerance
+                adaptive_config.learning_rate = config.learning_rate
+                adaptive_config.verbose = config.verbose
+            else:
+                # Create adaptive config from basic config
+                adaptive_config = AdaptiveAdamConfig(
+                    max_iter=config.max_iter,
+                    tolerance=config.tolerance,
+                    learning_rate=config.learning_rate,
+                    init_scale=config.init_scale,
+                    verbose=config.verbose
+                )
+        else:
+            adaptive_config = config
+            
+        return AdaptiveJAXAdamOptimizer(adaptive_config)
     
     # Large-scale optimizers - import here to avoid circular imports
     elif strategy in [OptimizationStrategy.MINI_BATCH_SGD, 

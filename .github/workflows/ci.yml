@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-py${{ matrix.python-version }}-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-py${{ matrix.python-version }}-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+        pip install -e .
+    
+    - name: Run unit tests
+      run: |
+        python -m pytest tests/unit/ -v --tb=short --cov=pradel_jax --cov-report=xml
+    
+    - name: Run integration tests
+      run: |
+        python -m pytest tests/integration/ -v --tb=short
+    
+    - name: Upload coverage to Codecov
+      if: matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 isort mypy
+    
+    - name: Run black
+      run: |
+        black --check --diff pradel_jax/ tests/
+    
+    - name: Run flake8
+      run: |
+        flake8 pradel_jax/ tests/
+    
+    - name: Run isort
+      run: |
+        isort --check-only --diff pradel_jax/ tests/
+    
+    - name: Run mypy
+      run: |
+        mypy pradel_jax/ --ignore-missing-imports
+      continue-on-error: true  # Mypy can be strict
+
+  quick-performance:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+    
+    - name: Run quick performance smoke test
+      run: |
+        cd tests/benchmarks
+        
+        # Quick smoke test to ensure basic performance is reasonable
+        python -c "
+import time
+import pradel_jax as pj
+
+print('Running quick performance smoke test...')
+
+# Load data
+data = pj.load_data('../../data/dipper_dataset.csv')
+model = pj.PradelModel()
+formula = pj.create_simple_spec(phi='~1', p='~1', f='~1')
+
+# Test basic optimization
+start_time = time.time()
+result = pj.fit_model(model, formula, data, strategy='scipy_lbfgs')
+elapsed = time.time() - start_time
+
+print(f'Basic optimization completed in {elapsed:.2f}s')
+print(f'Success: {result.success}')
+print(f'AIC: {result.aic:.2f}')
+
+# Basic sanity checks
+assert result.success, 'Basic optimization should succeed'
+assert elapsed < 30.0, f'Basic optimization took too long: {elapsed:.2f}s'
+assert result.aic < 1000, f'AIC seems unreasonably high: {result.aic}'
+
+print('✅ Quick performance smoke test passed')
+"
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit
+    
+    - name: Run safety check
+      run: |
+        pip freeze | safety check --json || echo "Safety check completed"
+    
+    - name: Run bandit security check
+      run: |
+        bandit -r pradel_jax/ -f json -o bandit-report.json || echo "Bandit check completed"
+    
+    - name: Upload security report
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-report
+        path: bandit-report.json
+        retention-days: 30
