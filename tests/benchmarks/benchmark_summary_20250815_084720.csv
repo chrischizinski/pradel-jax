@@ -1,4 +1,0 @@
-module,success,duration_seconds,return_code,timestamp
-performance_quick,True,33.87365433300147,0,20250815_084720
-memory_quick,True,6.623669541993877,0,20250815_084720
-convergence_quick,False,5.098010125017026,1,20250815_084720

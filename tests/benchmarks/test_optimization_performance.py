@@ -286,7 +286,7 @@ def test_comprehensive_benchmark_suite(dipper_data, formula_specs):
             'formula_complexity': formula_name,
             'timestamp': timestamp,
             'dataset': 'dipper',
-            'dataset_size': len(dipper_data.capture_histories)
+            'dataset_size': dipper_data.n_individuals
         })
         
         all_results.append(result)

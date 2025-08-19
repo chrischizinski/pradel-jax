@@ -1,0 +1,356 @@
+name: Performance Tests
+
+on:
+  # Run on pushes to main for regression detection
+  push:
+    branches: [ main ]
+  
+  # Run on PRs to prevent performance regressions
+  pull_request:
+    branches: [ main ]
+  
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      update_baselines:
+        description: 'Update performance baselines'
+        required: false
+        type: boolean
+        default: false
+      
+  # Run weekly to monitor drift
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 6 AM UTC
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  performance-regression:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        # Test on different Python versions for comprehensive coverage
+        python-version: ['3.9', '3.11']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Need full history for performance comparison
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        pip install -e .
+        
+        # Install additional performance monitoring tools
+        pip install psutil memory_profiler
+    
+    - name: Download baseline performance data
+      uses: actions/cache@v3
+      with:
+        path: tests/benchmarks/performance_baselines.json
+        key: performance-baselines-${{ matrix.python-version }}-v1
+        restore-keys: |
+          performance-baselines-${{ matrix.python-version }}-
+    
+    - name: Create baselines if missing
+      run: |
+        if [ ! -f tests/benchmarks/performance_baselines.json ]; then
+          echo "Creating initial performance baselines..."
+          cd tests/benchmarks
+          python test_performance_regression.py --mode baseline
+        else
+          echo "Using existing performance baselines"
+        fi
+    
+    - name: Run performance regression tests
+      id: regression_tests
+      env:
+        CURRENT_VERSION: ${{ github.sha }}
+        BASELINE_VERSION: ${{ github.event.before || 'main' }}
+      run: |
+        cd tests/benchmarks
+        python test_performance_regression.py \
+          --mode test \
+          --output regression_report.json \
+          --threshold-time 1.5 \
+          --threshold-memory 1.3
+      
+      # Continue on failure to upload results
+      continue-on-error: true
+    
+    - name: Upload performance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-report-py${{ matrix.python-version }}
+        path: tests/benchmarks/regression_report.json
+        retention-days: 30
+    
+    - name: Parse regression results
+      id: parse_results
+      run: |
+        cd tests/benchmarks
+        if [ -f regression_report.json ]; then
+          echo "Parsing regression results..."
+          
+          # Extract key metrics using jq
+          total_tests=$(jq -r '.total_tests' regression_report.json)
+          failed_tests=$(jq -r '.failed_tests' regression_report.json)
+          avg_time=$(jq -r '.performance_summary.avg_time' regression_report.json)
+          success_rate=$(jq -r '.performance_summary.success_rate' regression_report.json)
+          
+          echo "total_tests=$total_tests" >> $GITHUB_OUTPUT
+          echo "failed_tests=$failed_tests" >> $GITHUB_OUTPUT
+          echo "avg_time=$avg_time" >> $GITHUB_OUTPUT
+          echo "success_rate=$success_rate" >> $GITHUB_OUTPUT
+          
+          # Check if there were regressions
+          if [ "$failed_tests" -gt 0 ]; then
+            echo "regressions_detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "regressions_detected=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "No regression report found"
+          echo "regressions_detected=true" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Comment PR with performance results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = 'tests/benchmarks/regression_report.json';
+          
+          if (fs.existsSync(path)) {
+            const report = JSON.parse(fs.readFileSync(path, 'utf8'));
+            
+            let comment = `## 🚀 Performance Test Results (Python ${{ matrix.python-version }})\n\n`;
+            comment += `| Metric | Value |\n`;
+            comment += `|--------|-------|\n`;
+            comment += `| Total Tests | ${report.total_tests} |\n`;
+            comment += `| Passed | ${report.passed_tests} |\n`;
+            comment += `| Failed | ${report.failed_tests} |\n`;
+            comment += `| Average Time | ${report.performance_summary.avg_time.toFixed(3)}s |\n`;
+            comment += `| Success Rate | ${(report.performance_summary.success_rate * 100).toFixed(1)}% |\n\n`;
+            
+            if (report.regressions_detected.length > 0) {
+              comment += `### ⚠️ Regressions Detected\n\n`;
+              for (const regression of report.regressions_detected) {
+                comment += `**${regression.strategy}/${regression.formula_complexity}:**\n`;
+                for (const issue of regression.issues || []) {
+                  comment += `- ${issue.metric}: ${issue.ratio?.toFixed(2)}x slower (threshold: ${issue.threshold}x)\n`;
+                }
+                comment += '\n';
+              }
+            } else {
+              comment += `### ✅ No Performance Regressions Detected\n\n`;
+              comment += `All optimization strategies are performing within acceptable limits.`;
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }
+    
+    - name: Update baselines (if requested)
+      if: github.event.inputs.update_baselines == 'true' || github.ref == 'refs/heads/main'
+      run: |
+        cd tests/benchmarks
+        echo "Updating performance baselines..."
+        python test_performance_regression.py --mode baseline
+    
+    - name: Save updated baselines
+      if: github.event.inputs.update_baselines == 'true' || github.ref == 'refs/heads/main'
+      uses: actions/cache@v3
+      with:
+        path: tests/benchmarks/performance_baselines.json
+        key: performance-baselines-${{ matrix.python-version }}-v1-${{ github.sha }}
+    
+    - name: Fail job if critical regressions detected
+      if: steps.parse_results.outputs.regressions_detected == 'true'
+      run: |
+        echo "❌ Performance regressions detected!"
+        echo "Check the regression report for details."
+        exit 1
+
+  memory-profiling:
+    runs-on: ubuntu-latest
+    needs: performance-regression
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+        pip install memory_profiler matplotlib
+    
+    - name: Run memory profiling
+      run: |
+        cd tests/benchmarks
+        
+        # Run memory profiling on key optimization strategies
+        echo "Profiling memory usage..."
+        
+        python -c "
+import pradel_jax as pj
+from memory_profiler import profile
+import matplotlib.pyplot as plt
+import psutil
+import time
+
+# Simple memory usage test
+@profile
+def test_memory_usage():
+    data = pj.load_data('../../data/dipper_dataset.csv')
+    model = pj.PradelModel()
+    formula = pj.create_simple_spec(phi='~1', p='~1', f='~1')
+    
+    # Test memory usage with different strategies
+    for strategy in ['scipy_lbfgs', 'hybrid']:
+        print(f'Testing {strategy}...')
+        result = pj.fit_model(model, formula, data, strategy=strategy)
+        time.sleep(0.1)  # Brief pause between tests
+
+if __name__ == '__main__':
+    test_memory_usage()
+" > memory_profile.log 2>&1 || echo "Memory profiling completed"
+        
+        # Save memory profile
+        if [ -f memory_profile.log ]; then
+          echo "Memory profiling results:"
+          cat memory_profile.log
+        fi
+    
+    - name: Upload memory profile
+      uses: actions/upload-artifact@v3
+      with:
+        name: memory-profile
+        path: tests/benchmarks/memory_profile.log
+        retention-days: 30
+
+  benchmark-comparison:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout PR branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.head_ref }}
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+    
+    - name: Run PR benchmarks
+      run: |
+        cd tests/benchmarks
+        python test_performance_regression.py --mode test --output pr_performance.json
+    
+    - name: Checkout main branch
+      uses: actions/checkout@v4
+      with:
+        ref: main
+        clean: false
+    
+    - name: Install main branch dependencies
+      run: |
+        pip install -e .
+    
+    - name: Run main benchmarks
+      run: |
+        cd tests/benchmarks
+        python test_performance_regression.py --mode test --output main_performance.json
+    
+    - name: Compare performance
+      run: |
+        cd tests/benchmarks
+        
+        python -c "
+import json
+import sys
+
+# Load both reports
+try:
+    with open('pr_performance.json') as f:
+        pr_data = json.load(f)
+    with open('main_performance.json') as f:
+        main_data = json.load(f)
+except FileNotFoundError as e:
+    print(f'Could not load performance data: {e}')
+    sys.exit(1)
+
+# Compare key metrics
+pr_time = pr_data['performance_summary']['avg_time']
+main_time = main_data['performance_summary']['avg_time']
+time_ratio = pr_time / main_time if main_time > 0 else 1.0
+
+pr_success = pr_data['performance_summary']['success_rate']
+main_success = main_data['performance_summary']['success_rate']
+
+print(f'=== Performance Comparison ===')
+print(f'PR average time: {pr_time:.3f}s')
+print(f'Main average time: {main_time:.3f}s')
+print(f'Performance ratio: {time_ratio:.2f}x')
+print(f'PR success rate: {pr_success:.1%}')
+print(f'Main success rate: {main_success:.1%}')
+
+# Check for significant performance changes
+if time_ratio > 1.2:
+    print('⚠️ PR is significantly slower than main')
+    sys.exit(1)
+elif time_ratio < 0.8:
+    print('🚀 PR shows performance improvement!')
+else:
+    print('✅ Performance is comparable to main')
+
+if pr_success < main_success * 0.9:
+    print('⚠️ PR has lower success rate than main')
+    sys.exit(1)
+"
+    
+    - name: Upload comparison results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-comparison
+        path: tests/benchmarks/*_performance.json
+        retention-days: 30

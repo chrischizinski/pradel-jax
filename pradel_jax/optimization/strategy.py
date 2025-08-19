@@ -32,7 +32,8 @@ class OptimizationStrategy(Enum):
     SCIPY_LBFGS = "scipy_lbfgs"      # L-BFGS-B (most reliable)
     SCIPY_SLSQP = "scipy_slsqp"      # SLSQP (robust for constraints)
     SCIPY_BFGS = "scipy_bfgs"        # BFGS (good for well-conditioned)
-    JAX_ADAM = "jax_adam"            # Adam optimizer
+    JAX_ADAM = "jax_adam"            # Basic Adam optimizer
+    JAX_ADAM_ADAPTIVE = "jax_adam_adaptive"  # Advanced adaptive Adam
     JAX_LBFGS = "jax_lbfgs"          # JAX L-BFGS
     MULTI_START = "multi_start"      # Multiple random starts
     HYBRID = "hybrid"                # Combines multiple approaches
@@ -241,12 +242,26 @@ class PerformancePredictor:
             'size_scaling': 0.9,
             'memory_factor': 1.5
         },
+        OptimizationStrategy.JAX_ADAM_ADAPTIVE: {
+            'base_success_rate': 0.92,  # Higher success rate with adaptive features
+            'base_time': 2.5,  # Slightly slower due to adaptive features
+            'condition_sensitivity': 0.08,  # Better handling of conditioning issues
+            'size_scaling': 0.85,  # Better scaling with adaptive learning rates
+            'memory_factor': 1.7  # Slightly more memory for state tracking
+        },
         OptimizationStrategy.MULTI_START: {
             'base_success_rate': 0.99,
             'base_time': 8.0,
             'condition_sensitivity': 0.01,
             'size_scaling': 1.0,
             'memory_factor': 2.0
+        },
+        OptimizationStrategy.HYBRID: {
+            'base_success_rate': 0.97,  # High reliability from multi-phase approach
+            'base_time': 4.0,  # Faster than multi-start due to quick phase
+            'condition_sensitivity': 0.02,  # Good handling of conditioning issues
+            'size_scaling': 1.05,  # Slightly worse scaling than pure methods
+            'memory_factor': 1.5  # Moderate memory usage
         },
         
         # Large-scale strategies
@@ -483,11 +498,14 @@ class StrategySelector:
         if difficulty == ProblemDifficulty.EASY:
             return [
                 OptimizationStrategy.SCIPY_LBFGS,
+                OptimizationStrategy.JAX_ADAM_ADAPTIVE,  # Prefer adaptive for better convergence
                 OptimizationStrategy.JAX_ADAM,
                 OptimizationStrategy.SCIPY_BFGS
             ]
         elif difficulty == ProblemDifficulty.MODERATE:
             return [
+                OptimizationStrategy.HYBRID,  # Good balance for moderate problems
+                OptimizationStrategy.JAX_ADAM_ADAPTIVE,  # Excellent for moderate complexity
                 OptimizationStrategy.SCIPY_LBFGS,
                 OptimizationStrategy.SCIPY_SLSQP,
                 OptimizationStrategy.JAX_ADAM,
@@ -495,6 +513,7 @@ class StrategySelector:
             ]
         elif difficulty == ProblemDifficulty.DIFFICULT:
             return [
+                OptimizationStrategy.HYBRID,  # Excellent for difficult problems
                 OptimizationStrategy.SCIPY_SLSQP,
                 OptimizationStrategy.MULTI_START,
                 OptimizationStrategy.SCIPY_LBFGS,
@@ -503,6 +522,7 @@ class StrategySelector:
         else:  # VERY_DIFFICULT
             return [
                 OptimizationStrategy.MULTI_START,
+                OptimizationStrategy.HYBRID,  # Strong fallback capability
                 OptimizationStrategy.SCIPY_SLSQP,
                 OptimizationStrategy.MINI_BATCH_SGD
             ]
@@ -531,6 +551,10 @@ class StrategySelector:
             score += 5  # Proven reliable
         elif strategy == OptimizationStrategy.MULTI_START and characteristics.condition_estimate and characteristics.condition_estimate > 1e8:
             score += 10  # Good for ill-conditioned problems
+        elif strategy == OptimizationStrategy.HYBRID:
+            score += 7  # Good balance of speed and reliability
+            if characteristics.parameter_ratio > 0.05:
+                score += 3  # Particularly good for under-identified problems
         
         return score
     
@@ -552,8 +576,14 @@ class StrategySelector:
             OptimizationStrategy.JAX_ADAM: OptimizationConfig(
                 max_iter=10000, tolerance=1e-2, learning_rate=0.00001, init_scale=0.1
             ),
+            OptimizationStrategy.JAX_ADAM_ADAPTIVE: OptimizationConfig(
+                max_iter=8000, tolerance=1e-6, learning_rate=0.01, init_scale=0.1
+            ),
             OptimizationStrategy.MULTI_START: OptimizationConfig(
                 max_iter=1000, tolerance=1e-8, init_scale=0.05, verbose=True
+            ),
+            OptimizationStrategy.HYBRID: OptimizationConfig(
+                max_iter=1000, tolerance=1e-8, init_scale=0.1, verbose=True
             )
         }
         
@@ -602,7 +632,9 @@ class StrategySelector:
             OptimizationStrategy.SCIPY_LBFGS: "Most reliable general-purpose optimizer with excellent convergence",
             OptimizationStrategy.SCIPY_SLSQP: "Maximum robustness for difficult optimization landscapes",
             OptimizationStrategy.MULTI_START: "Multiple starting points ensure global convergence",
-            OptimizationStrategy.JAX_ADAM: "Fast gradient-based optimization suitable for well-behaved problems"
+            OptimizationStrategy.JAX_ADAM: "Fast gradient-based optimization suitable for well-behaved problems",
+            OptimizationStrategy.JAX_ADAM_ADAPTIVE: "Advanced adaptive Adam with learning rate scheduling and early stopping",
+            OptimizationStrategy.HYBRID: "Optimal balance of speed and reliability with automatic fallback mechanisms"
         }
         
         specific_rationale = strategy_rationales.get(strategy, "Selected based on problem characteristics")

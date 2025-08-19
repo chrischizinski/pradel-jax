@@ -4,10 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## 🎯 Current Project Status (August 2025)
 
-### ✅ **MAJOR MILESTONE COMPLETED**: Optimization Framework Integration
-The Pradel-JAX optimization framework is **fully integrated and production-ready**:
+### ✅ **MAJOR MILESTONE COMPLETED**: Advanced Optimization Framework
+The Pradel-JAX optimization framework is **fully integrated and production-ready** with advanced optimization capabilities:
 - ✅ Complete JAX-based Pradel model implementation
-- ✅ Intelligent optimization strategy selection (L-BFGS-B, SLSQP, Adam, multi-start)  
+- ✅ Intelligent optimization strategy selection (L-BFGS-B, SLSQP, Adam, multi-start, hybrid)  
+- ✅ **NEW**: Hybrid optimization combining fast scipy with reliable multi-start fallback
+- ✅ **NEW**: Adaptive JAX Adam with learning rate scheduling, early stopping, and warm restarts
+- ✅ **NEW**: Automated performance regression testing with CI/CD integration
 - ✅ Industry-standard performance monitoring and experiment tracking
 - ✅ Comprehensive formula system with R-style syntax
 - ✅ Robust error handling and validation framework
@@ -129,6 +132,24 @@ result = optimize_model(
     context=data_context,
     bounds=model.get_parameter_bounds(data_context, design_matrices)
 )
+
+# Or specify advanced optimization strategies
+result = optimize_model(
+    objective_function=objective,
+    initial_parameters=initial_parameters,
+    context=data_context,
+    bounds=bounds,
+    preferred_strategy=OptimizationStrategy.HYBRID  # Fast + reliable
+)
+
+# Or use adaptive Adam for gradient-based optimization
+result = optimize_model(
+    objective_function=objective,
+    initial_parameters=initial_parameters,
+    context=data_context,
+    bounds=bounds,
+    preferred_strategy=OptimizationStrategy.JAX_ADAM_ADAPTIVE
+)
 ```
 
 ### Testing and Validation
@@ -160,6 +181,24 @@ python tests/integration/test_simple_integration.py
 
 # Full framework test (comprehensive)
 python tests/integration/test_optimization_framework.py
+```
+
+#### **📊 Performance Testing**
+```bash
+# Quick performance check (for development)
+python scripts/monitor_performance.py --quick
+
+# Comprehensive performance monitoring
+python scripts/monitor_performance.py --full --output results.json
+
+# Compare with baseline performance
+python scripts/monitor_performance.py --compare
+
+# Create new performance baselines
+python scripts/monitor_performance.py --baseline
+
+# Run regression tests (CI/CD)
+python tests/benchmarks/test_performance_regression.py --mode test
 ```
 
 ### Documentation and Contribution
@@ -196,21 +235,27 @@ git push origin feature/new-feature-name
 
 ## 📋 Current Development Priorities
 
+### **✅ Recently Completed (August 2025)**
+- **🔧 Hybrid Optimization Framework** - Fast scipy with reliable multi-start fallback ✅
+- **📊 Automated Performance Regression Testing** - CI/CD pipeline with baseline tracking ✅  
+- **⚡ Optimized JAX Adam Parameters** - Adaptive learning rates and modern optimization techniques ✅
+
 ### **⭐ High Priority (Next 2-3 weeks)**
 1. **📖 Enhanced Documentation & Examples** - Create comprehensive tutorials and API docs
-2. **📊 Performance Benchmarking** - Validate against existing RMark validation data  
-3. **🔬 RMark Parameter Validation** - Implement side-by-side parameter comparison
+2. **🔬 RMark Parameter Validation** - Implement side-by-side parameter comparison with new optimizers
+3. **📊 Production Performance Validation** - Validate new optimization improvements on real datasets
 
 ### **🔧 Medium Priority (Next 1-2 months)**
-4. **📈 Large-Scale Testing** - Test framework on realistic large datasets
-5. **🚀 CI/CD Pipeline** - Set up GitHub Actions for automated testing
-6. **🎨 Production API Wrappers** - Create simplified interfaces for common workflows
-7. **📋 Model Selection Tools** - Implement AIC/BIC comparison and diagnostics
+4. **📈 Large-Scale Testing** - Test framework on realistic large datasets with new optimizers
+5. **🎨 Production API Wrappers** - Create simplified interfaces for common workflows
+6. **📋 Model Selection Tools** - Implement AIC/BIC comparison and diagnostics
+7. **🔍 Memory Optimization** - Profile and optimize memory usage for large-scale problems
 
 ### **🎯 Lower Priority (Next 2-3 months)**  
 8. **🔄 Batch Processing** - Add parallel dataset processing capabilities
 9. **📊 Visualization Dashboard** - Create diagnostic plots and result visualization
 10. **🔗 R Integration via Reticulate** - Create R package wrapper interface
+11. **🧪 Advanced Optimization Strategies** - Implement Bayesian optimization and other advanced methods
 
 ## 🏗️ Architecture Overview
 
@@ -225,7 +270,8 @@ git push origin feature/new-feature-name
 
 **`pradel_jax.optimization`** - Advanced optimization framework
 - `strategy.py` - Intelligent strategy selection based on problem characteristics
-- `optimizers.py` - Industry-standard optimizers (L-BFGS-B, SLSQP, Adam)
+- `optimizers.py` - Industry-standard optimizers (L-BFGS-B, SLSQP, Adam, Hybrid)
+- `adaptive_adam.py` - Advanced adaptive Adam with learning rate scheduling and early stopping
 - `orchestrator.py` - High-level optimization coordination and monitoring
 - `monitoring.py` - MLflow integration for experiment tracking
 
