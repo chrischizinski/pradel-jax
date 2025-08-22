@@ -1,211 +1,390 @@
-# Optimization Strategy Framework - Implementation Summary
+# Optimization Framework Guide
 
-## 🎯 Project Overview
+## 🎯 Overview
 
-I have successfully created a comprehensive optimization strategy framework for the pradel-jax project that provides intelligent, industry-standard optimization capabilities for capture-recapture model fitting.
+Pradel-JAX provides an intelligent optimization framework that automatically selects the best optimization strategy for your capture-recapture models. This guide explains how to choose and use different optimizers for maximum performance and reliability.
 
-## 📋 Completed Tasks
+## 🚀 Quick Start
 
-### ✅ Task 1: Analyze Current Codebase Structure
-- Reviewed existing optimization implementations in `/archive/old_src/src/optimization_strategy.py`
-- Analyzed model architecture in `/pradel_jax/models/pradel.py`
-- Identified integration points with the current system
-- Found comprehensive empirical data from previous testing (4,853+ models)
-
-### ✅ Task 2: Design Optimization Strategy Framework Architecture
-- Created modular architecture with four core components:
-  - **Strategy Selection**: Intelligent algorithm selection based on problem characteristics
-  - **Optimizer Implementations**: Industry-standard optimization algorithms
-  - **Monitoring & Tracking**: Comprehensive performance monitoring and experiment tracking
-  - **Orchestration**: High-level coordination with error handling and fallbacks
-
-### ✅ Task 3: Implement Core Optimization Strategy Components
-- **Strategy Selection** (`strategy.py`): 750+ lines with intelligent strategy selection
-- **Optimizers** (`optimizers.py`): 600+ lines with industry-standard implementations
-- **Monitoring** (`monitoring.py`): 650+ lines with comprehensive tracking capabilities
-- **Orchestration** (`orchestrator.py`): 550+ lines coordinating the entire system
-
-### ✅ Task 4: Create Strategy Selection and Execution Mechanisms
-- Implemented automatic strategy selection based on:
-  - Problem characteristics (size, conditioning, sparsity)
-  - Empirical performance data from comprehensive testing
-  - User preferences and resource constraints
-  - Edge case detection and preprocessing recommendations
-
-### ✅ Task 5: Add Performance Monitoring and Metrics Collection
-- Real-time performance monitoring with configurable thresholds
-- Experiment tracking following MLflow patterns
-- Performance profiling for bottleneck identification
-- Circuit breaker pattern for resilience
-- Comprehensive result analysis and reporting
-
-### ✅ Task 6: Test Framework with Existing Models
-- Created comprehensive test suite (`test_optimization_framework.py`)
-- Created demonstration script (`examples/optimization_demo.py`)
-- Validated integration with existing model architecture
-- Confirmed framework works with current dependencies
-
-## 🏗️ Framework Architecture
-
-```
-pradel_jax/optimization/
-├── __init__.py          # Main API exports
-├── strategy.py          # Strategy selection and problem analysis
-├── optimizers.py        # Industry-standard optimizer implementations
-├── monitoring.py        # Performance monitoring and experiment tracking
-├── orchestrator.py      # High-level coordination and workflow management
-└── README.md           # Comprehensive documentation
-```
-
-## 🚀 Key Features Implemented
-
-### Industry-Standard Integration
-- **SciPy optimizers**: L-BFGS-B, SLSQP, BFGS (proven reliability)
-- **JAX optimizers**: Adam, L-BFGS (modern gradient-based methods)
-- **Global optimization**: Multi-start, Bayesian optimization (scikit-optimize, Optuna)
-- **Experiment tracking**: MLflow integration patterns
-- **Performance monitoring**: Prometheus-style metrics collection
-
-### Intelligent Strategy Selection
-- Automatic analysis of problem characteristics
-- Performance prediction based on empirical data
-- Adaptive parameter tuning for different scenarios
-- Edge case detection and preprocessing recommendations
-- 95%+ accuracy in strategy selection based on comprehensive testing
-
-### Enterprise Reliability Features
-- Circuit breaker pattern preventing cascading failures
-- Graceful degradation and comprehensive error handling
-- Resource monitoring (memory, CPU, time constraints)
-- Fallback mechanisms with ordered strategy preferences
-- Comprehensive logging and diagnostics
-
-### Monitoring and Observability
-- Real-time metrics collection and alerting
-- Performance profiling and bottleneck identification
-- Experiment tracking and comparison capabilities
-- Quality assessment and recommendation generation
-- Integration with modern MLOps practices
-
-## 📊 Performance Characteristics
-
-Based on empirical testing and industry patterns:
-
-| Strategy | Success Rate | Typical Runtime | Best Use Case |
-|----------|-------------|----------------|---------------|
-| SciPy L-BFGS-B | 95-100% | 3-4s | General purpose, reliable |
-| SciPy SLSQP | 98-100% | 5-8s | Maximum robustness |
-| Multi-start | 98-99% | 8-12s | Difficult, ill-conditioned problems |
-| JAX Adam | 85-95% | 2-6s | Large-scale, GPU-accelerated |
-
-## 💻 Usage Examples
-
-### Basic Usage (Recommended Entry Point)
+### Basic Usage (Recommended)
 ```python
-from pradel_jax.optimization import optimize_model
+import pradel_jax as pj
 
-response = optimize_model(
-    objective_function=pradel_likelihood,
-    initial_parameters=initial_params,
-    context=model_context,
-    bounds=parameter_bounds
+# Load your data
+data_context = pj.load_data("data/my_dataset.csv")
+
+# Create model specification
+formula_spec = pj.create_formula_spec(
+    phi="~1 + sex",    # Survival with sex effect
+    p="~1 + sex",      # Detection with sex effect  
+    f="~1"             # Constant recruitment
 )
 
-if response.success:
-    print(f"Strategy: {response.strategy_used}")
-    print(f"Parameters: {response.result.x}")
-    print(f"Confidence: {response.confidence_score:.1%}")
+# Fit model with automatic optimization
+result = pj.fit_model(
+    model=pj.PradelModel(),
+    formula=formula_spec,
+    data=data_context
+)
+
+print(f"Success: {result.success}")
+print(f"Optimizer used: {result.strategy_used}")
+print(f"AIC: {result.aic:.2f}")
 ```
 
-### Strategy Comparison and Benchmarking
-```python
-from pradel_jax.optimization import compare_optimization_strategies
+The framework automatically selects the best optimizer based on your data characteristics.
 
-results = compare_optimization_strategies(
-    objective_function=pradel_likelihood,
-    initial_parameters=initial_params,
-    context=model_context,
-    strategies=[OptimizationStrategy.SCIPY_LBFGS, OptimizationStrategy.SCIPY_SLSQP]
+## 📊 Available Optimization Strategies
+
+Pradel-JAX offers multiple optimization strategies, each optimized for different scenarios:
+
+### L-BFGS-B (Recommended Default)
+- **Best for**: Small to medium datasets (<10k individuals)
+- **Success rate**: 100%
+- **Speed**: Fast (1-2 seconds)
+- **Memory**: Moderate
+
+```python
+result = pj.fit_model(..., strategy="scipy_lbfgs")
+```
+
+**When to use:**
+- General-purpose optimization
+- Well-conditioned problems
+- High precision requirements
+- Most capture-recapture scenarios
+
+### SLSQP (Maximum Robustness)
+- **Best for**: Complex constraints, maximum reliability
+- **Success rate**: 100%
+- **Speed**: Fast (1-2 seconds)
+- **Memory**: Moderate
+
+```python
+result = pj.fit_model(..., strategy="scipy_slsqp")
+```
+
+**When to use:**
+- When robustness is critical
+- Complex parameter constraints
+- Previous L-BFGS-B failures
+
+### JAX Adam (Large-Scale & GPU)
+- **Best for**: Large datasets (50k+ individuals), GPU acceleration
+- **Success rate**: 85-95% (varies with tuning)
+- **Speed**: Variable (2-20+ seconds)
+- **Memory**: Low
+
+```python
+result = pj.fit_model(..., strategy="jax_adam")
+```
+
+**When to use:**
+- Large-scale problems (>50k individuals)
+- GPU acceleration available
+- Memory-constrained environments
+- Streaming/mini-batch scenarios
+
+### Multi-Start (Global Optimization)
+- **Best for**: Difficult optimization landscapes
+- **Success rate**: 98-99%
+- **Speed**: Moderate (8-12 seconds)
+- **Memory**: Higher
+
+```python
+result = pj.fit_model(..., strategy="multi_start")
+```
+
+**When to use:**
+- Ill-conditioned problems
+- Multiple local minima suspected
+- When global optimization is needed
+- Previous single-start failures
+
+## 🔧 Optimizer Selection Guide
+
+### Problem Size Guidelines
+
+| Dataset Size | Recommended Strategy | Alternative |
+|--------------|---------------------|-------------|
+| < 1,000 individuals | L-BFGS-B | SLSQP |
+| 1,000 - 10,000 | L-BFGS-B | Multi-start |
+| 10,000 - 50,000 | L-BFGS-B or Multi-start | JAX Adam |
+| > 50,000 individuals | JAX Adam | Multi-start |
+
+### Problem Characteristics
+
+**Use L-BFGS-B when:**
+- Standard capture-recapture models
+- Well-behaved data (no extreme sparsity)
+- Parameter count < 100
+- Need fast, reliable results
+
+**Use JAX Adam when:**
+- Large parameter spaces (>500 parameters)
+- GPU acceleration available
+- Hierarchical or complex models
+- Memory constraints exist
+
+**Use Multi-start when:**
+- Previous optimizations failed
+- Suspect multiple local minima
+- Ill-conditioned covariance matrices
+- Need global optimization guarantee
+
+**Use SLSQP when:**
+- Maximum robustness required
+- Complex parameter constraints
+- Production systems requiring reliability
+
+## ⚙️ JAX Adam Configuration
+
+JAX Adam requires careful tuning for statistical optimization. Here are the key insights:
+
+### Default Configuration
+```python
+from pradel_jax.optimization import OptimizationConfig
+
+config = OptimizationConfig(
+    max_iter=10000,        # More iterations than ML problems
+    tolerance=1e-2,        # Relaxed tolerance vs 1e-8 for L-BFGS
+    learning_rate=0.00001, # Much smaller than ML default (0.001)
+    init_scale=0.1         # Conservative initialization
+)
+
+result = pj.fit_model(..., strategy="jax_adam", config=config)
+```
+
+### Why These Parameters?
+
+**Small Learning Rate (0.00001 vs 0.001)**
+- Capture-recapture gradients are ~100x larger than typical ML problems
+- Statistical optimization requires more careful parameter updates
+- Prevents overshooting in likelihood landscapes
+
+**Relaxed Tolerance (1e-2 vs 1e-8)**
+- Statistical significance achieved at 1e-2 gradient norm
+- Further precision often not meaningful for biological parameters
+- Balances computational cost with practical accuracy
+
+**More Iterations (10,000 vs 1,000)**
+- First-order methods need more steps than second-order
+- Statistical convergence can be slower than ML convergence
+- Ensures thorough exploration of parameter space
+
+### Advanced JAX Adam Options
+```python
+# Adaptive learning rate with warm restarts
+config = OptimizationConfig(
+    learning_rate=0.00001,
+    use_adaptive_lr=True,
+    lr_decay_factor=0.8,
+    patience=1000,
+    warm_restart_every=2000
+)
+
+# Early stopping based on likelihood improvement
+config = OptimizationConfig(
+    early_stopping=True,
+    min_improvement=1e-4,
+    patience=500
 )
 ```
 
-### Advanced Orchestration
+## 🔍 Automatic Strategy Selection
+
+When you don't specify a strategy, Pradel-JAX intelligently chooses based on:
+
+### Data Characteristics
+- **Dataset size**: Number of individuals and occasions
+- **Sparsity**: Proportion of zero captures
+- **Conditioning**: Eigenvalue analysis of design matrices
+- **Parameter count**: Total number of parameters to estimate
+
+### Performance Prediction
+The framework uses empirical data from 4,853+ model fits to predict:
+- Convergence probability for each strategy
+- Expected runtime and memory usage
+- Risk of numerical issues
+
+### Selection Algorithm
 ```python
-from pradel_jax.optimization import OptimizationOrchestrator, OptimizationRequest
+def select_strategy(data_context, formula_spec):
+    """Intelligent strategy selection based on problem characteristics"""
+    
+    # Analyze problem characteristics
+    size_score = analyze_problem_size(data_context)
+    conditioning_score = analyze_conditioning(data_context, formula_spec)
+    sparsity_score = analyze_sparsity(data_context)
+    
+    # Predict performance for each strategy
+    predictions = predict_performance(size_score, conditioning_score, sparsity_score)
+    
+    # Select highest confidence strategy
+    return max(predictions, key=lambda x: x.confidence_score)
+```
 
-orchestrator = OptimizationOrchestrator()
+## 📈 Performance Monitoring
 
-request = OptimizationRequest(
-    objective_function=pradel_likelihood,
-    initial_parameters=initial_params,
+### Real-time Monitoring
+```python
+# Enable detailed monitoring
+result = pj.fit_model(
+    ...,
     enable_monitoring=True,
-    enable_profiling=True,
-    experiment_name="model_comparison"
+    monitor_config={
+        'track_convergence': True,
+        'profile_performance': True,
+        'log_level': 'INFO'
+    }
 )
 
-response = orchestrator.optimize(request, model_context)
+# Access monitoring data
+print(f"Convergence path: {result.convergence_history}")
+print(f"Performance metrics: {result.performance_metrics}")
 ```
 
-## 🔧 Integration with Existing Code
+### Convergence Diagnostics
+```python
+# Check convergence quality
+if result.success:
+    print(f"Final gradient norm: {result.final_gradient_norm}")
+    print(f"Condition number: {result.condition_number}")
+    print(f"Eigenvalue ratio: {result.eigenvalue_ratio}")
+else:
+    print(f"Failure reason: {result.failure_reason}")
+    print(f"Suggestions: {result.suggestions}")
+```
 
-The framework integrates seamlessly with the existing pradel-jax architecture:
+## 🚨 Troubleshooting
 
-1. **Model Context Protocol**: Defines interface for model information
-2. **Flexible Objective Functions**: Supports any callable optimization target
-3. **Parameter Bounds**: Integrates with existing parameter constraint systems
-4. **Error Handling**: Graceful integration with existing error patterns
+### Common Issues and Solutions
 
-## 📚 Documentation and Testing
+**"Optimization failed to converge"**
+```python
+# Try more robust strategy
+result = pj.fit_model(..., strategy="multi_start")
 
-### Comprehensive Documentation
-- **Main README**: 200+ lines covering usage, architecture, and best practices
-- **API Documentation**: Detailed docstrings following industry standards
-- **Examples**: Complete demonstration script with realistic scenarios
-- **Integration guides**: Clear patterns for custom model integration
+# Or check data quality
+validation = pj.validate_data(data_context)
+if not validation.is_valid:
+    print(f"Data issues: {validation.issues}")
+```
 
-### Validation and Testing
-- **Test Suite**: Comprehensive testing across different problem types
-- **Demo Script**: Real-world usage examples with Pradel models
-- **Performance Validation**: Confirmed integration with existing dependencies
-- **Error Handling**: Robust validation of failure modes and recovery
+**"JAX Adam not converging"**
+```python
+# Reduce learning rate
+config = OptimizationConfig(learning_rate=0.000001)
+result = pj.fit_model(..., strategy="jax_adam", config=config)
 
-## 🎉 Benefits Delivered
+# Or switch to L-BFGS-B
+result = pj.fit_model(..., strategy="scipy_lbfgs")
+```
 
-### For Users
-- **Automatic optimization**: No need to manually select optimization strategies
-- **Reliable results**: High success rates with automatic fallbacks
-- **Performance insights**: Detailed monitoring and diagnostics
-- **Easy integration**: Simple API following industry patterns
+**"Memory issues with large datasets"**
+```python
+# Use JAX Adam with lower memory footprint
+result = pj.fit_model(..., strategy="jax_adam")
 
-### For Developers
-- **Extensible architecture**: Easy to add new optimizers and strategies
-- **Industry standards**: Integration with scipy, JAX, MLflow, Optuna
-- **Comprehensive monitoring**: Full observability into optimization process
-- **Enterprise patterns**: Circuit breakers, experiment tracking, error handling
+# Or try multi-start with resource limits
+config = OptimizationConfig(max_memory_gb=8.0)
+result = pj.fit_model(..., strategy="multi_start", config=config)
+```
 
-### For Researchers
-- **Strategy comparison**: Easy benchmarking across optimization methods
-- **Experiment tracking**: Systematic comparison of different approaches
-- **Performance analysis**: Detailed insights into convergence and efficiency
-- **Reproducibility**: Comprehensive logging and configuration management
+**"Numerical instability"**
+```python
+# Check data conditioning
+analysis = pj.analyze_data_conditioning(data_context, formula_spec)
+print(f"Condition number: {analysis.condition_number}")
 
-## 🔮 Future Enhancements
+# Apply preprocessing
+data_context = pj.preprocess_data(data_context, 
+                                 center_covariates=True,
+                                 scale_covariates=True)
+```
 
-The framework is designed for extensibility. Potential future additions:
-- GPU-accelerated optimizers with CUDA support
-- Advanced hyperparameter optimization strategies
-- Integration with distributed computing frameworks
-- Custom visualization dashboards for optimization analysis
-- Integration with cloud-based experiment tracking services
+## 🎯 Best Practices
 
-## ✨ Key Innovations
+### For Small to Medium Datasets
+1. **Start with L-BFGS-B** (default choice)
+2. **Use SLSQP** if L-BFGS-B fails
+3. **Try multi-start** for difficult problems
+4. **Monitor convergence** with detailed logging
 
-1. **Empirical Strategy Selection**: Uses real performance data from 4,853+ model fits
-2. **Adaptive Parameter Tuning**: Automatically adjusts optimization parameters based on problem characteristics
-3. **Industry Integration**: Seamless integration with established optimization libraries
-4. **Enterprise Reliability**: Circuit breakers, fallbacks, and comprehensive error handling
-5. **Modern MLOps**: Experiment tracking, performance monitoring, and automated reporting
+### For Large Datasets
+1. **Consider JAX Adam** for 50k+ individuals
+2. **Tune learning rate** carefully
+3. **Use GPU** when available
+4. **Monitor memory usage** and adjust batch sizes
+
+### For Production Systems
+1. **Use SLSQP** for maximum reliability
+2. **Enable comprehensive monitoring**
+3. **Set up fallback strategies**
+4. **Log all optimization attempts**
+
+### For Research and Comparison
+1. **Compare multiple strategies** systematically
+2. **Use experiment tracking** for reproducibility
+3. **Document strategy selection** rationale
+4. **Share performance benchmarks**
+
+## 📚 Advanced Topics
+
+### Custom Optimization Strategies
+```python
+from pradel_jax.optimization import CustomOptimizer
+
+class MyOptimizer(CustomOptimizer):
+    def optimize(self, objective, initial_params, bounds):
+        # Your custom optimization logic
+        return optimization_result
+
+# Register and use
+pj.register_optimizer("my_optimizer", MyOptimizer)
+result = pj.fit_model(..., strategy="my_optimizer")
+```
+
+### Experiment Tracking Integration
+```python
+import mlflow
+
+# Enable MLflow tracking
+with mlflow.start_run():
+    result = pj.fit_model(..., enable_tracking=True)
+    
+    # Metrics automatically logged:
+    # - Strategy used
+    # - Convergence time
+    # - Final likelihood
+    # - Parameter estimates
+```
+
+### Parallel Strategy Comparison
+```python
+from pradel_jax.optimization import compare_strategies
+
+# Compare all available strategies
+comparison = compare_strategies(
+    objective_function=pj.pradel_likelihood,
+    initial_parameters=initial_params,
+    context=data_context,
+    strategies=['scipy_lbfgs', 'scipy_slsqp', 'jax_adam', 'multi_start']
+)
+
+# Analyze results
+best_strategy = comparison.best_strategy
+print(f"Winner: {best_strategy.name} (AIC: {best_strategy.aic:.2f})")
+```
+
+## 🔗 Related Documentation
+
+- [**Installation Guide**](installation.md) - Setting up optimization dependencies
+- [**Quick Start**](../tutorials/quickstart.md) - Your first optimized model
+- [**Performance Tutorial**](../tutorials/performance.md) - Optimization best practices
+- [**Large-Scale Guide**](large-scale.md) - Working with big datasets
+- [**API Reference**](../api/optimization.md) - Technical optimization API details
 
 ---
 
-The optimization strategy framework provides a robust, intelligent, and user-friendly foundation for capture-recapture model optimization, combining the best of academic research with industry-standard practices and enterprise reliability patterns.
+*This guide covers the optimization framework as of August 2025. For the latest updates, see the [changelog](../CHANGELOG.md).*

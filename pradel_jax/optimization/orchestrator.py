@@ -651,7 +651,7 @@ class OptimizationOrchestrator:
 def optimize_model(
     objective_function: Callable,
     initial_parameters: np.ndarray,
-    context: ModelContext,
+    context: Union[ModelContext, 'DataContext'],
     bounds: Optional[List[tuple]] = None,
     preferred_strategy: Optional[OptimizationStrategy] = None,
     **kwargs
@@ -661,6 +661,22 @@ def optimize_model(
     
     This is the main entry point most users should use.
     """
+    # Convert DataContext to ModelContext if needed
+    if not hasattr(context, 'n_parameters'):
+        # Create a wrapper that adds n_parameters from initial_parameters
+        class ModelContextWrapper:
+            def __init__(self, data_context, n_parameters):
+                # Copy all attributes from the original context
+                for attr in dir(data_context):
+                    if not attr.startswith('_'):
+                        setattr(self, attr, getattr(data_context, attr))
+                self.n_parameters = n_parameters
+            
+            def get_condition_estimate(self) -> Optional[float]:
+                return None
+        
+        context = ModelContextWrapper(context, len(initial_parameters))
+    
     orchestrator = OptimizationOrchestrator()
     
     request = OptimizationRequest(

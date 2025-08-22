@@ -1,0 +1,417 @@
+[
+  {
+    "test_id": "test_01_run_1",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.6209125840032357,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_01_run_2",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.0045291669957805425,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_01_run_3",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.004018167004687712,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_01_run_4",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.004599416999553796,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_01_run_5",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.004266874995664693,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_02_run_1",
+    "strategy": "scipy_slsqp",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.00468525000178488,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 1,
+    "error_message": null
+  },
+  {
+    "test_id": "test_02_run_2",
+    "strategy": "scipy_slsqp",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.004139541000768077,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 1,
+    "error_message": null
+  },
+  {
+    "test_id": "test_02_run_3",
+    "strategy": "scipy_slsqp",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.0048030000034486875,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 1,
+    "error_message": null
+  },
+  {
+    "test_id": "test_02_run_4",
+    "strategy": "scipy_slsqp",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.004495875000429805,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 1,
+    "error_message": null
+  },
+  {
+    "test_id": "test_02_run_5",
+    "strategy": "scipy_slsqp",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.003935291002562735,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 1,
+    "error_message": null
+  },
+  {
+    "test_id": "test_03_run_1",
+    "strategy": "multi_start",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.081428750003397,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_03_run_2",
+    "strategy": "multi_start",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.007843667000997812,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_03_run_3",
+    "strategy": "multi_start",
+    "dataset_size": 294,
+    "formula_complexity": "simple",
+    "success": true,
+    "execution_time": 0.00791837499855319,
+    "aic": 4401.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": -1.0869841575622559,
+      "param_2": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_04_run_1",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "intermediate",
+    "success": true,
+    "execution_time": 0.05393383399496088,
+    "aic": 4405.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_04_run_2",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "intermediate",
+    "success": true,
+    "execution_time": 0.004690500005381182,
+    "aic": 4405.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_04_run_3",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "intermediate",
+    "success": true,
+    "execution_time": 0.005152166995685548,
+    "aic": 4405.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_05_run_1",
+    "strategy": "multi_start",
+    "dataset_size": 294,
+    "formula_complexity": "intermediate",
+    "success": true,
+    "execution_time": 0.00908654200611636,
+    "aic": 4405.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_05_run_2",
+    "strategy": "multi_start",
+    "dataset_size": 294,
+    "formula_complexity": "intermediate",
+    "success": true,
+    "execution_time": 0.009315750001405831,
+    "aic": 4405.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_05_run_3",
+    "strategy": "multi_start",
+    "dataset_size": 294,
+    "formula_complexity": "intermediate",
+    "success": true,
+    "execution_time": 0.008493583001836669,
+    "aic": 4405.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_06_run_1",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "complex",
+    "success": true,
+    "execution_time": 0.01286870900366921,
+    "aic": 4407.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046,
+      "param_5": 0.0
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_06_run_2",
+    "strategy": "scipy_lbfgs",
+    "dataset_size": 294,
+    "formula_complexity": "complex",
+    "success": true,
+    "execution_time": 0.0044573329942068085,
+    "aic": 4407.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046,
+      "param_5": 0.0
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_07_run_1",
+    "strategy": "multi_start",
+    "dataset_size": 294,
+    "formula_complexity": "complex",
+    "success": true,
+    "execution_time": 0.008815207998850383,
+    "aic": 4407.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046,
+      "param_5": 0.0
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  },
+  {
+    "test_id": "test_07_run_2",
+    "strategy": "multi_start",
+    "dataset_size": 294,
+    "formula_complexity": "complex",
+    "success": true,
+    "execution_time": 0.00857279099727748,
+    "aic": 4407.7900390625,
+    "log_likelihood": -2197.89501953125,
+    "parameters": {
+      "param_0": 0.03756320849061012,
+      "param_1": 0.0,
+      "param_2": -1.0869841575622559,
+      "param_3": 0.0,
+      "param_4": -1.869537115097046,
+      "param_5": 0.0
+    },
+    "convergence_iterations": 0,
+    "error_message": null
+  }
+]
