@@ -1,0 +1,138 @@
+[
+  {
+    "strategy": "lbfgs",
+    "n_runs": 10,
+    "success_rate": 0.0,
+    "avg_time": 0.0030011541002750164,
+    "std_time": 0.00011818581013472911,
+    "param_stats": {},
+    "aic_stats": {},
+    "convergence_consistency": 0.0,
+    "initialization_analysis": {
+      "strategy": "lbfgs",
+      "n_initializations": 6,
+      "success_rate": 0.0,
+      "aic_variability": 0,
+      "best_aic": Infinity,
+      "worst_aic": Infinity,
+      "initialization_robustness": true
+    },
+    "formula_complexity": "simple",
+    "timestamp": "20250821_164151",
+    "dataset": "dipper"
+  },
+  {
+    "strategy": "slsqp",
+    "n_runs": 8,
+    "success_rate": 0.0,
+    "avg_time": 0.0031025364996821736,
+    "std_time": 0.0002049307593952946,
+    "param_stats": {},
+    "aic_stats": {},
+    "convergence_consistency": 0.0,
+    "initialization_analysis": {
+      "strategy": "slsqp",
+      "n_initializations": 6,
+      "success_rate": 0.0,
+      "aic_variability": 0,
+      "best_aic": Infinity,
+      "worst_aic": Infinity,
+      "initialization_robustness": true
+    },
+    "formula_complexity": "simple",
+    "timestamp": "20250821_164151",
+    "dataset": "dipper"
+  },
+  {
+    "strategy": "multi_start",
+    "n_runs": 5,
+    "success_rate": 1.0,
+    "avg_time": 0.007807016799779376,
+    "std_time": 0.00017283916222902987,
+    "param_stats": {
+      "param_means": "[ 0.03756321 -1.08698416 -1.86953712]",
+      "param_stds": "[0. 0. 0.]",
+      "param_cv": "[0. 0. 0.]"
+    },
+    "aic_stats": {
+      "aic_mean": 4401.7900390625,
+      "aic_std": 0.0,
+      "aic_cv": 0.0,
+      "aic_range": 0.0
+    },
+    "convergence_consistency": 1.0,
+    "formula_complexity": "simple",
+    "timestamp": "20250821_164151",
+    "dataset": "dipper"
+  },
+  {
+    "strategy": "lbfgs",
+    "n_runs": 8,
+    "success_rate": 0.0,
+    "avg_time": 0.0031023905003166874,
+    "std_time": 0.00015506616172582084,
+    "param_stats": {},
+    "aic_stats": {},
+    "convergence_consistency": 0.0,
+    "formula_complexity": "moderate",
+    "timestamp": "20250821_164151",
+    "dataset": "dipper"
+  },
+  {
+    "strategy": "multi_start",
+    "n_runs": 5,
+    "success_rate": 1.0,
+    "avg_time": 0.00851875000153086,
+    "std_time": 0.00021682932307895582,
+    "param_stats": {
+      "param_means": "[ 0.03756321  0.         -1.08698416 -1.86953712]",
+      "param_stds": "[0. 0. 0. 0.]",
+      "param_cv": "[ 0. nan  0.  0.]"
+    },
+    "aic_stats": {
+      "aic_mean": 4403.7900390625,
+      "aic_std": 0.0,
+      "aic_cv": 0.0,
+      "aic_range": 0.0
+    },
+    "convergence_consistency": 1.0,
+    "formula_complexity": "moderate",
+    "timestamp": "20250821_164151",
+    "dataset": "dipper"
+  },
+  {
+    "strategy": "lbfgs",
+    "n_runs": 5,
+    "success_rate": 0.0,
+    "avg_time": 0.003042058199935127,
+    "std_time": 0.00019253897522708164,
+    "param_stats": {},
+    "aic_stats": {},
+    "convergence_consistency": 0.0,
+    "formula_complexity": "complex",
+    "timestamp": "20250821_164151",
+    "dataset": "dipper"
+  },
+  {
+    "strategy": "multi_start",
+    "n_runs": 3,
+    "success_rate": 1.0,
+    "avg_time": 0.008192319333223471,
+    "std_time": 0.00011862893466810935,
+    "param_stats": {
+      "param_means": "[ 0.03756321  0.         -1.08698416  0.         -1.86953712  0.        ]",
+      "param_stds": "[0. 0. 0. 0. 0. 0.]",
+      "param_cv": "[ 0. nan  0. nan  0. nan]"
+    },
+    "aic_stats": {
+      "aic_mean": 4407.7900390625,
+      "aic_std": 0.0,
+      "aic_cv": 0.0,
+      "aic_range": 0.0
+    },
+    "convergence_consistency": 1.0,
+    "formula_complexity": "complex",
+    "timestamp": "20250821_164151",
+    "dataset": "dipper"
+  }
+]

@@ -1,0 +1,110 @@
+{
+  "scipy_lbfgs": [
+    {
+      "strategy": "scipy_lbfgs",
+      "dataset_size": 1000,
+      "n_occasions": 7,
+      "avg_time": 0.5222602294998069,
+      "std_time": 0.4854546044989547,
+      "peak_memory_mb": 42.9375,
+      "success_rate": 1.0,
+      "avg_aic": 12047.7138671875,
+      "convergence_iterations": 0.0,
+      "memory_efficiency": 23.28966521106259,
+      "timestamp": "20250822_090711"
+    },
+    {
+      "strategy": "scipy_lbfgs",
+      "dataset_size": 5000,
+      "n_occasions": 7,
+      "avg_time": 0.25655302100494737,
+      "std_time": 0.24745147900102893,
+      "peak_memory_mb": 20.125,
+      "success_rate": 1.0,
+      "avg_aic": 49721.5625,
+      "convergence_iterations": 1.0,
+      "memory_efficiency": 248.4472049689441,
+      "timestamp": "20250822_090711"
+    },
+    {
+      "strategy": "scipy_lbfgs",
+      "dataset_size": 25000,
+      "n_occasions": 7,
+      "avg_time": 0.20834572899912018,
+      "std_time": 0.19737877100124024,
+      "peak_memory_mb": 18.6640625,
+      "success_rate": 1.0,
+      "avg_aic": 300859.65625,
+      "convergence_iterations": 0.0,
+      "memory_efficiency": 1339.4725826705735,
+      "timestamp": "20250822_090711"
+    },
+    {
+      "strategy": "scipy_lbfgs",
+      "dataset_size": 50000,
+      "n_occasions": 7,
+      "avg_time": 0.1988593124988256,
+      "std_time": 0.18385685449902667,
+      "peak_memory_mb": 21.1015625,
+      "success_rate": 1.0,
+      "avg_aic": 603068.6875,
+      "convergence_iterations": 0.0,
+      "memory_efficiency": 2369.4927804516847,
+      "timestamp": "20250822_090711"
+    }
+  ],
+  "multi_start": [
+    {
+      "strategy": "multi_start",
+      "dataset_size": 1000,
+      "n_occasions": 7,
+      "avg_time": 0.21034187549958006,
+      "std_time": 0.1977238334948197,
+      "peak_memory_mb": 13.078125,
+      "success_rate": 1.0,
+      "avg_aic": 12017.97265625,
+      "convergence_iterations": 0.0,
+      "memory_efficiency": 76.46356033452808,
+      "timestamp": "20250822_090711"
+    },
+    {
+      "strategy": "multi_start",
+      "dataset_size": 5000,
+      "n_occasions": 7,
+      "avg_time": 0.1865207084993017,
+      "std_time": 0.1680556665014592,
+      "peak_memory_mb": 14.0234375,
+      "success_rate": 1.0,
+      "avg_aic": 60533.296875,
+      "convergence_iterations": 0.0,
+      "memory_efficiency": 356.54596100278553,
+      "timestamp": "20250822_090711"
+    },
+    {
+      "strategy": "multi_start",
+      "dataset_size": 25000,
+      "n_occasions": 7,
+      "avg_time": 0.22599866650125477,
+      "std_time": 0.17904574950080132,
+      "peak_memory_mb": 30.1953125,
+      "success_rate": 1.0,
+      "avg_aic": 301128.65625,
+      "convergence_iterations": 0.0,
+      "memory_efficiency": 827.9430789133247,
+      "timestamp": "20250822_090711"
+    },
+    {
+      "strategy": "multi_start",
+      "dataset_size": 50000,
+      "n_occasions": 7,
+      "avg_time": 0.265870499999437,
+      "std_time": 0.21787091700389283,
+      "peak_memory_mb": 6.3984375,
+      "success_rate": 1.0,
+      "avg_aic": 602948.5,
+      "convergence_iterations": 0.0,
+      "memory_efficiency": 7814.407814407815,
+      "timestamp": "20250822_090711"
+    }
+  ]
+}

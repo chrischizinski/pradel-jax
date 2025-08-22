@@ -10,6 +10,13 @@ __author__ = "Ava Britton, Christopher Chizinski"
 
 # Core data loading
 from .data.adapters import load_data, DataContext, RMarkFormatAdapter, GenericFormatAdapter
+from .data.sampling import (
+    load_data_with_sampling, 
+    stratified_sample, 
+    train_validation_split,
+    determine_tier_status,
+    get_sampling_summary
+)
 
 # Formula system  
 from .formulas import FormulaSpec, ParameterFormula, create_simple_spec
@@ -20,6 +27,13 @@ from .models.base import ModelType, register_model, get_model, list_available_mo
 
 # Configuration 
 from .config.settings import PradelJaxConfig
+
+# Export functionality
+from .core.export import (
+    ResultsExporter,
+    export_model_results,
+    create_timestamped_export
+)
 
 # Import key exception classes
 from .core.exceptions import (
@@ -39,6 +53,11 @@ __all__ = [
     
     # Core data loading
     "load_data",
+    "load_data_with_sampling",
+    "stratified_sample", 
+    "train_validation_split",
+    "determine_tier_status",
+    "get_sampling_summary",
     "DataContext", 
     
     # Formula system
@@ -67,6 +86,11 @@ __all__ = [
     # Data adapters
     "RMarkFormatAdapter",
     "GenericFormatAdapter",
+    
+    # Export functionality
+    "ResultsExporter",
+    "export_model_results", 
+    "create_timestamped_export",
 ]
 
 # Set up default configuration
