@@ -42,6 +42,80 @@ class DataContext:
     occasion_names: Optional[List[str]] = None
     individual_ids: Optional[List[str]] = None
     metadata: Optional[Dict[str, Any]] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Serialize DataContext to a pickle-safe dictionary.
+        
+        Converts JAX arrays to numpy arrays for cross-process serialization.
+        """
+        # Convert JAX arrays to numpy arrays
+        capture_matrix_np = np.array(self.capture_matrix)
+        
+        covariates_np = {}
+        for name, value in self.covariates.items():
+            if isinstance(value, jnp.ndarray):
+                covariates_np[name] = np.array(value)
+            else:
+                # Keep non-array values (lists, bools, etc.) as-is
+                covariates_np[name] = value
+        
+        # Convert CovariateInfo objects to dicts
+        covariate_info_dict = {}
+        for name, info in self.covariate_info.items():
+            covariate_info_dict[name] = {
+                'name': info.name,
+                'dtype': info.dtype,
+                'is_time_varying': info.is_time_varying,
+                'is_categorical': info.is_categorical,
+                'levels': info.levels,
+                'time_occasions': info.time_occasions
+            }
+        
+        return {
+            'capture_matrix': capture_matrix_np,
+            'covariates': covariates_np,
+            'covariate_info': covariate_info_dict,
+            'n_individuals': self.n_individuals,
+            'n_occasions': self.n_occasions,
+            'occasion_names': self.occasion_names,
+            'individual_ids': self.individual_ids,
+            'metadata': self.metadata
+        }
+    
+    @classmethod
+    def from_dict(cls, data_dict: Dict[str, Any]) -> 'DataContext':
+        """
+        Deserialize DataContext from dictionary.
+        
+        Converts numpy arrays back to JAX arrays and reconstructs objects.
+        """
+        # Convert numpy arrays back to JAX arrays
+        capture_matrix = jnp.array(data_dict['capture_matrix'])
+        
+        covariates = {}
+        for name, value in data_dict['covariates'].items():
+            if isinstance(value, np.ndarray):
+                covariates[name] = jnp.array(value)
+            else:
+                # Keep non-array values as-is
+                covariates[name] = value
+        
+        # Reconstruct CovariateInfo objects
+        covariate_info = {}
+        for name, info_dict in data_dict['covariate_info'].items():
+            covariate_info[name] = CovariateInfo(**info_dict)
+        
+        return cls(
+            capture_matrix=capture_matrix,
+            covariates=covariates,
+            covariate_info=covariate_info,
+            n_individuals=data_dict['n_individuals'],
+            n_occasions=data_dict['n_occasions'],
+            occasion_names=data_dict['occasion_names'],
+            individual_ids=data_dict['individual_ids'],
+            metadata=data_dict['metadata']
+        )
 
 
 class DataFormatAdapter(ABC):
@@ -121,9 +195,14 @@ class DataFormatAdapter(ABC):
         
         # Convert to JAX arrays
         capture_matrix_jax = jnp.array(capture_matrix)
-        covariates_jax = {
-            name: jnp.array(array) for name, array in covariates.items()
-        }
+        covariates_jax = {}
+        
+        for name, array in covariates.items():
+            # Skip metadata fields that can't be converted to JAX arrays
+            if name.endswith('_categories') or name.endswith('_is_categorical'):
+                covariates_jax[name] = array  # Keep as-is (list or bool)
+            else:
+                covariates_jax[name] = jnp.array(array)  # Convert to JAX array
         
         n_individuals, n_occasions = capture_matrix.shape
         
@@ -214,10 +293,13 @@ class RMarkFormatAdapter(DataFormatAdapter):
         
         for col in covariate_cols:
             if data[col].dtype == 'object' or str(data[col].dtype) == 'category':
-                # Categorical variable - create dummy variables
-                dummies = pd.get_dummies(data[col], prefix=col)
-                for dummy_col in dummies.columns:
-                    covariates[dummy_col] = dummies[dummy_col].values.astype(np.float32)
+                # Store categorical variable as-is, design matrix builder will handle dummy variables
+                # Convert to numeric codes for easier processing
+                categorical_data = pd.Categorical(data[col])
+                covariates[col] = categorical_data.codes.astype(np.float32)
+                # Store category information for design matrix building
+                covariates[f'{col}_categories'] = categorical_data.categories.tolist()
+                covariates[f'{col}_is_categorical'] = True
             else:
                 # Numeric variable
                 values = data[col].values.astype(np.float32)
@@ -335,11 +417,17 @@ class GenericFormatAdapter(DataFormatAdapter):
     
     def extract_covariates(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
         """Extract covariates from remaining columns."""
+        # Create a copy to avoid modifying original data
+        data_processed = data.copy()
+        
+        # CRITICAL FIX: Convert numeric codes to meaningful categorical labels
+        data_processed = self._preprocess_categorical_variables(data_processed)
+        
         # Determine which columns to exclude
         if self.capture_columns:
             exclude_cols = set(self.capture_columns)
         else:
-            y_cols = [col for col in data.columns if col.startswith('Y') and col[1:].isdigit()]
+            y_cols = [col for col in data_processed.columns if col.startswith('Y') and col[1:].isdigit()]
             if y_cols:
                 exclude_cols = set(y_cols)
             else:
@@ -352,19 +440,22 @@ class GenericFormatAdapter(DataFormatAdapter):
         if self.covariate_columns:
             covariate_cols = self.covariate_columns
         else:
-            covariate_cols = [col for col in data.columns if col not in exclude_cols]
+            covariate_cols = [col for col in data_processed.columns if col not in exclude_cols]
         
         covariates = {}
         
         for col in covariate_cols:
-            if data[col].dtype == 'object' or str(data[col].dtype) == 'category':
-                # Categorical variable
-                dummies = pd.get_dummies(data[col], prefix=col)
-                for dummy_col in dummies.columns:
-                    covariates[dummy_col] = dummies[dummy_col].values.astype(np.float32)
+            if data_processed[col].dtype == 'object' or str(data_processed[col].dtype) == 'category':
+                # Store categorical variable as-is, design matrix builder will handle dummy variables
+                # Convert to numeric codes for easier processing
+                categorical_data = pd.Categorical(data_processed[col])
+                covariates[col] = categorical_data.codes.astype(np.float32)
+                # Store category information for design matrix building
+                covariates[f'{col}_categories'] = categorical_data.categories.tolist()
+                covariates[f'{col}_is_categorical'] = True
             else:
                 # Numeric variable
-                values = data[col].values.astype(np.float32)
+                values = data_processed[col].values.astype(np.float32)
                 if np.any(np.isnan(values)):
                     values = np.nan_to_num(values, nan=np.nanmean(values))
                 covariates[col] = values
@@ -411,6 +502,94 @@ class GenericFormatAdapter(DataFormatAdapter):
                 )
         
         return covariate_info
+    
+    def _preprocess_categorical_variables(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        CRITICAL FIX: Convert numeric codes to meaningful categorical labels.
+        
+        This addresses the validation audit finding that categorical variables
+        like 'gender' and 'tier_history' use numeric codes instead of meaningful labels.
+        """
+        data_fixed = data.copy()
+        
+        # Fix gender encoding: 1.0 = Male, 2.0 = Female
+        if 'gender' in data_fixed.columns:
+            if data_fixed['gender'].dtype in ['float64', 'int64', 'float32', 'int32']:
+                logger.info("Converting gender from numeric codes to categorical labels")
+                gender_mapping = {1.0: 'Male', 2.0: 'Female'}
+                data_fixed['gender'] = data_fixed['gender'].fillna(1.0).map(gender_mapping)
+                # Fill any unmapped values with 'Male' (default)
+                data_fixed['gender'] = data_fixed['gender'].fillna('Male')
+        
+        # Fix tier_history encoding: Reduce excessive categories
+        if 'tier_history' in data_fixed.columns:
+            if data_fixed['tier_history'].dtype in ['float64', 'int64', 'float32', 'int32']:
+                logger.info("Converting tier_history from numeric codes to simplified categories")
+                # Simplify tier_history by grouping similar values
+                # This reduces the 91 unique values to meaningful categories
+                def simplify_tier_history(value):
+                    if pd.isna(value):
+                        return 'Unknown'
+                    value = float(value)
+                    if value <= 1:
+                        return 'Tier_1'
+                    elif value <= 2:
+                        return 'Tier_2'
+                    elif value <= 3:
+                        return 'Tier_3'
+                    else:
+                        return 'Tier_Higher'
+                
+                data_fixed['tier_history'] = data_fixed['tier_history'].apply(simplify_tier_history)
+        
+        # Fix tier encoding if present
+        if 'tier' in data_fixed.columns:
+            if data_fixed['tier'].dtype in ['float64', 'int64', 'float32', 'int32']:
+                logger.info("Converting tier from numeric codes to categorical labels")
+                # Map tier values for permit choice analysis: 0=no permit, 1/2=permit tier choice
+                def map_tier(value):
+                    if pd.isna(value):
+                        return 'No_Permit'
+                    value = float(value)
+                    if value == 0:
+                        return 'No_Permit'
+                    elif value == 1:
+                        return 'Tier_1_Permit'
+                    elif value == 2:
+                        return 'Tier_2_Permit'
+                    else:
+                        # Handle any unexpected values gracefully
+                        logger.warning(f"Unexpected tier value: {value}, mapping to No_Permit")
+                        return 'No_Permit'
+                
+                data_fixed['tier'] = data_fixed['tier'].apply(map_tier)
+                
+                # Create additional binary variables for analysis
+                # Binary: Has permit (1 or 2) vs No permit (0)
+                data_fixed['has_permit'] = data_fixed['tier'].apply(
+                    lambda x: 'Yes' if x in ['Tier_1_Permit', 'Tier_2_Permit'] else 'No'
+                )
+                
+                # Conditional: Among permit holders, which tier? (1 vs 2)
+                data_fixed['permit_tier_choice'] = data_fixed['tier'].apply(
+                    lambda x: 'Tier_1' if x == 'Tier_1_Permit' 
+                             else 'Tier_2' if x == 'Tier_2_Permit' 
+                             else 'No_Permit'
+                )
+        
+        # Standardize continuous variables to prevent scaling issues
+        continuous_vars = ['age']
+        for var in continuous_vars:
+            if var in data_fixed.columns:
+                if data_fixed[var].dtype in ['float64', 'int64', 'float32', 'int32']:
+                    # Center and scale
+                    mean_val = data_fixed[var].mean()
+                    std_val = data_fixed[var].std()
+                    if std_val > 0:
+                        data_fixed[var] = (data_fixed[var] - mean_val) / std_val
+                        logger.info(f"Standardized {var}: mean={mean_val:.2f}, std={std_val:.2f}")
+        
+        return data_fixed
 
 
 # Registry of available adapters

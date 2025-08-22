@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from .terms import Term, InterceptTerm, VariableTerm, InteractionTerm, FunctionTerm, PolynomialTerm
 from .spec import ParameterFormula
+from .time_varying import TimeVaryingDesignMatrixBuilder
 from ..core.exceptions import ModelSpecificationError, DataFormatError
 from ..utils.logging import get_logger
 
@@ -38,6 +39,7 @@ class DesignMatrixBuilder:
     
     def __init__(self):
         self.logger = get_logger(self.__class__.__name__)
+        self.time_varying_builder = TimeVaryingDesignMatrixBuilder()
     
     def build_matrix(
         self,
@@ -186,28 +188,67 @@ class DesignMatrixBuilder:
                 ]
             )
         
-        # Get covariate data
-        covariate_data = np.array(data_context.covariates[var_name])
+        # Check if this is a categorical variable
+        is_categorical = data_context.covariates.get(f'{var_name}_is_categorical', False)
         
-        # Handle different data shapes
-        if covariate_data.ndim == 1 and len(covariate_data) == n_individuals:
-            # Individual-level covariate
-            column = covariate_data.astype(np.float32)
-        elif covariate_data.ndim == 2:
-            # Time-varying covariate - need to handle appropriately
-            # For now, use first time point or average
-            self.logger.warning(f"Time-varying covariate {var_name} - using first time point")
-            column = covariate_data[:, 0].astype(np.float32)
+        if is_categorical:
+            # Handle categorical variable with dummy coding
+            categories = data_context.covariates.get(f'{var_name}_categories', [])
+            categorical_codes = np.array(data_context.covariates[var_name])
+            
+            # Create dummy variables (drop first category for identifiability)
+            if len(categories) <= 1:
+                # Only one category - create intercept-like column
+                column = np.ones(n_individuals, dtype=np.float32)
+                return [column], [var_name]
+            else:
+                # Multiple categories - create dummy variables (drop first)
+                columns = []
+                names = []
+                
+                for i, category in enumerate(categories[1:], 1):  # Skip first category
+                    dummy_col = (categorical_codes == i).astype(np.float32)
+                    columns.append(dummy_col)
+                    names.append(f'{var_name}_{category}')
+                
+                return columns, names
         else:
-            raise DataFormatError(
-                specific_issue=f"Covariate '{var_name}' has unexpected shape: {covariate_data.shape}",
-                suggestions=[
-                    f"Expected shape: ({n_individuals},) or ({n_individuals}, {n_occasions})",
-                    "Check covariate data structure",
-                ]
-            )
-        
-        return [column], [var_name]
+            # Handle numeric variable
+            covariate_data = np.array(data_context.covariates[var_name])
+            
+            # Handle different data shapes
+            if covariate_data.ndim == 1 and len(covariate_data) == n_individuals:
+                # Individual-level covariate
+                column = covariate_data.astype(np.float32)
+            elif covariate_data.ndim == 2:
+                # Time-varying covariate - handle properly
+                self.logger.info(f"Processing time-varying covariate: {var_name}")
+                
+                # Check if we have time-varying information in data context
+                if f"{var_name}_is_time_varying" in data_context.covariates:
+                    # Use the time-varying matrix directly
+                    # For Pradel models, parameters typically apply to intervals
+                    # Use appropriate time indexing based on parameter type
+                    
+                    # For simplicity, use the first available time point for now
+                    # TODO: Implement proper time-occasion mapping based on parameter type
+                    column = covariate_data[:, 0].astype(np.float32)
+                    self.logger.info(f"Using first time point for {var_name} (shape: {covariate_data.shape})")
+                else:
+                    # Legacy handling - use first time point with warning
+                    self.logger.warning(f"Time-varying covariate {var_name} - using first time point (consider using time-varying framework)")
+                    column = covariate_data[:, 0].astype(np.float32)
+            else:
+                raise DataFormatError(
+                    specific_issue=f"Covariate '{var_name}' has unexpected shape: {covariate_data.shape}",
+                    suggestions=[
+                        f"Expected shape: ({n_individuals},) or ({n_individuals}, {n_occasions})",
+                        "Check covariate data structure",
+                        "Use time-varying covariate framework for multi-dimensional data",
+                    ]
+                )
+            
+            return [column], [var_name]
     
     def _build_interaction_columns(
         self,

@@ -89,6 +89,16 @@ from .large_scale import (
     create_large_scale_optimizer
 )
 
+# Parallel optimization
+from .parallel import (
+    ParallelOptimizer,
+    ParallelModelSpec,
+    ParallelOptimizationResult,
+    CheckpointManager,
+    fit_models_parallel,
+    create_model_specs_from_formulas
+)
+
 # Main exports - the recommended public API
 __all__ = [
     # High-level functions (recommended entry points)
@@ -137,5 +147,13 @@ __all__ = [
     'LargeScaleStrategySelector',
     'MiniBatchSGDOptimizer',
     'GPUAcceleratedOptimizer',
-    'DistributedOptimizer'
+    'DistributedOptimizer',
+    
+    # Parallel optimization
+    'ParallelOptimizer',
+    'ParallelModelSpec',
+    'ParallelOptimizationResult',
+    'CheckpointManager',
+    'fit_models_parallel',
+    'create_model_specs_from_formulas'
 ]

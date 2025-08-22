@@ -4,41 +4,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## 🎯 Current Project Status (August 2025)
 
-### ✅ **MAJOR MILESTONE COMPLETED**: Advanced Optimization Framework
-The Pradel-JAX optimization framework is **fully integrated and production-ready** with advanced optimization capabilities:
-- ✅ Complete JAX-based Pradel model implementation
-- ✅ Intelligent optimization strategy selection (L-BFGS-B, SLSQP, Adam, multi-start, hybrid)  
-- ✅ **NEW**: Hybrid optimization combining fast scipy with reliable multi-start fallback
-- ✅ **NEW**: Adaptive JAX Adam with learning rate scheduling, early stopping, and warm restarts
-- ✅ **NEW**: Automated performance regression testing with CI/CD integration
-- ✅ Industry-standard performance monitoring and experiment tracking
-- ✅ Comprehensive formula system with R-style syntax
-- ✅ Robust error handling and validation framework
-- ✅ Full integration test suite (all tests passing)
+### 🚨 **CRITICAL STATUS**: Fundamental Issues Requiring Resolution
+The Pradel-JAX optimization framework has **significant technical issues** that must be resolved before production use:
+
+#### ✅ **What Actually Works:**
+- ✅ Basic scipy optimization strategies (L-BFGS-B, SLSQP, multi-start)
+- ✅ JAX infrastructure for likelihood computation and JIT compilation
+- ✅ Data loading and basic preprocessing capabilities
+- ✅ Formula system with R-style syntax (basic functionality)
+- ✅ Export and reporting functionality
 - ✅ Repository securely published on GitHub with data protection
 
-### 🏗️ **Repository Structure (Newly Organized)**
+#### 🚨 **Critical Issues Requiring Immediate Attention:**
+- ❌ **JAX Adam optimization strategies**: 0% success rate, complete convergence failures
+- ❌ **RMark validation interface**: Broken with ParameterFormula attribute errors
+- ❌ **Mathematical accuracy**: 137% parameter estimation errors documented, corrections not integrated
+- ❌ **Categorical variable processing**: Silent corruption causing identical log-likelihoods
+- ❌ **Statistical validation**: Framework non-functional, preventing production validation
+
+### 🏗️ **Repository Structure (Recently Organized)**
 ```
 pradel-jax/
-├── 📚 docs/              # Comprehensive documentation hub
-│   ├── user-guide/       # Installation, architecture, optimization
-│   ├── tutorials/        # Quick start, examples, performance tips
-│   ├── development/      # Contributing, setup, maintenance guides
-│   └── security/         # Data protection and audit reports
-├── 🧪 tests/             # Professional test suite
-│   ├── integration/      # End-to-end workflow tests
-│   ├── unit/            # Component-specific tests
-│   ├── benchmarks/      # Performance testing
-│   └── fixtures/        # Shared test data and utilities
-├── 📦 pradel_jax/        # Main package (modular architecture)
-│   ├── optimization/    # Advanced optimization framework
-│   ├── models/          # Pradel model implementation
-│   ├── formulas/        # R-style formula system
-│   ├── data/           # Data handling and validation
-│   └── core/           # Core APIs and abstractions
-├── 📊 data/             # Safe datasets only (sensitive data protected)
-├── 🔧 examples/         # Usage demonstrations
-└── 📋 Root configs      # Requirements, setup, documentation
+├── 📦 pradel_jax/           # Main package (modular architecture)
+│   ├── optimization/       # Advanced optimization framework
+│   ├── models/            # Pradel model implementation
+│   ├── formulas/          # R-style formula system
+│   ├── data/             # Data handling and validation
+│   ├── validation/       # Statistical validation framework
+│   └── core/             # Core APIs and abstractions
+├── 📚 docs/                 # All documentation organized
+│   ├── user-guide/         # Installation, architecture, optimization  
+│   ├── tutorials/          # Quick start, examples, performance tips
+│   ├── development/        # Contributing, setup, maintenance guides
+│   ├── reports/           # Analysis and status reports
+│   └── validation/        # Validation documentation
+├── 🧪 tests/               # Professional test suite
+│   ├── integration/        # End-to-end workflow tests
+│   ├── unit/              # Component-specific tests
+│   ├── benchmarks/        # Performance testing
+│   └── validation/        # Statistical validation tests
+├── 🔧 scripts/             # Development and analysis scripts
+│   ├── analysis/          # Data analysis (including nebraska/)
+│   ├── validation/        # Validation scripts
+│   ├── debugging/         # Debug and diagnostic scripts
+│   ├── fixes/            # Bug fix implementations
+│   └── benchmarks/       # Performance testing scripts
+├── 📊 outputs/             # All generated results
+│   ├── benchmarks/        # Performance benchmark results
+│   ├── validation/        # Validation test results
+│   ├── analysis/          # Analysis outputs
+│   └── reports/          # Generated reports
+├── 🔧 examples/            # Usage demonstrations
+│   ├── benchmarks/        # Performance examples
+│   └── validation/       # Validation examples
+├── 💾 data/               # Input datasets (sensitive data protected)
+└── 📋 Root               # Essential project files only
 ```
 
 ## 🚀 Development Environment Setup
@@ -235,27 +255,30 @@ git push origin feature/new-feature-name
 
 ## 📋 Current Development Priorities
 
-### **✅ Recently Completed (August 2025)**
-- **🔧 Hybrid Optimization Framework** - Fast scipy with reliable multi-start fallback ✅
-- **📊 Automated Performance Regression Testing** - CI/CD pipeline with baseline tracking ✅  
-- **⚡ Optimized JAX Adam Parameters** - Adaptive learning rates and modern optimization techniques ✅
+### **🚨 CRITICAL PRIORITIES (Immediate - Blocking Production Use)**
+1. **🔧 Fix JAX Adam Optimization** - Currently 0% success rate, complete convergence failures
+2. **🔬 Repair RMark Validation Interface** - ParameterFormula attribute errors preventing validation
+3. **📊 Integrate Mathematical Likelihood Corrections** - 137% parameter errors need to be resolved
+4. **🔄 Fix Categorical Variable Processing** - Silent corruption causing identical log-likelihoods
+5. **✅ Establish Functional Statistical Validation** - Framework is currently non-operational
 
-### **⭐ High Priority (Next 2-3 weeks)**
-1. **📖 Enhanced Documentation & Examples** - Create comprehensive tutorials and API docs
-2. **🔬 RMark Parameter Validation** - Implement side-by-side parameter comparison with new optimizers
-3. **📊 Production Performance Validation** - Validate new optimization improvements on real datasets
+### **⭐ High Priority (After Critical Issues Resolved)**
+1. **📈 Parameter Recovery Validation** - Ensure <5% error on synthetic datasets
+2. **🎯 Convergence Rate Improvement** - Achieve >95% success rate on real datasets  
+3. **🔍 Cross-Package Validation** - Systematic comparison with RMark results
+4. **📊 Comprehensive Integration Testing** - End-to-end workflow validation
 
-### **🔧 Medium Priority (Next 1-2 months)**
-4. **📈 Large-Scale Testing** - Test framework on realistic large datasets with new optimizers
-5. **🎨 Production API Wrappers** - Create simplified interfaces for common workflows
-6. **📋 Model Selection Tools** - Implement AIC/BIC comparison and diagnostics
-7. **🔍 Memory Optimization** - Profile and optimize memory usage for large-scale problems
+### **🔧 Medium Priority (Future Development)**
+4. **📖 Enhanced Documentation & Examples** - After core functionality is proven
+5. **📈 Large-Scale Testing** - After basic reliability is established
+6. **🎨 Production API Wrappers** - After statistical accuracy is validated
+7. **📋 Model Selection Tools** - After core parameter estimation works correctly
 
-### **🎯 Lower Priority (Next 2-3 months)**  
-8. **🔄 Batch Processing** - Add parallel dataset processing capabilities
-9. **📊 Visualization Dashboard** - Create diagnostic plots and result visualization
-10. **🔗 R Integration via Reticulate** - Create R package wrapper interface
-11. **🧪 Advanced Optimization Strategies** - Implement Bayesian optimization and other advanced methods
+### **🎯 Lower Priority (Long-term Goals)**  
+8. **🔄 Batch Processing** - Enhanced parallel processing capabilities
+9. **📊 Visualization Dashboard** - Diagnostic plots and result visualization
+10. **🔗 R Integration** - Reticulate interface development
+11. **🧪 Advanced Features** - GPU acceleration, Bayesian methods, additional models
 
 ## 🏗️ Architecture Overview
 
@@ -382,18 +405,23 @@ warnings.filterwarnings("ignore", ".*TPU.*")
 
 ## 🎯 Context for Claude Code
 
-When working on this project, remember:
+When working on this project, remember the **ACTUAL current status**:
 
-1. **Current Status**: Optimization framework is complete and production-ready
-2. **Architecture**: Modern, modular design with clear separation of concerns  
-3. **Testing**: Comprehensive test suite with integration validation
-4. **Documentation**: Well-organized docs/ folder with user and developer guides
-5. **Security**: Sensitive data properly protected, only safe data in repository
-6. **Community**: Repository ready for open-source collaboration and contribution
+1. **Current Status**: Framework has fundamental technical issues that BLOCK production use
+2. **Critical Problems**: JAX Adam optimization, RMark validation, mathematical accuracy, categorical processing
+3. **What Works**: Basic scipy optimizers, JAX infrastructure, data loading, formula parsing
+4. **Immediate Priority**: Fix core functionality before any feature development
+5. **Testing Reality**: Integration tests only covered working components, missed critical failures
+6. **Documentation Gap**: Previous docs overstated readiness, need accuracy corrections
 
-The project represents a significant achievement in bringing modern JAX-based optimization to capture-recapture modeling while maintaining statistical rigor and usability.
+**⚠️ CRITICAL REMINDER**: Do NOT claim production readiness until:
+- JAX Adam optimization achieves >90% success rate
+- RMark validation interface is functional
+- Mathematical accuracy is validated (<5% parameter error)
+- Categorical variables process correctly
+- End-to-end statistical validation passes
 
-**Focus Areas**: Documentation enhancement, performance benchmarking, RMark validation, and community building are the next key priorities.
+**Focus Areas**: Fix fundamental blocking issues first, then validate thoroughly, then document accurately.
 
 ---
 
