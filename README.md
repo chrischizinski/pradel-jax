@@ -1,5 +1,6 @@
 # Pradel-JAX: Flexible Capture-Recapture Analysis
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/282627a7bc024091aa56f595d6f856c1)](https://app.codacy.com/gh/chrischizinski/pradel-jax?utm_source=github.com&utm_medium=referral&utm_content=chrischizinski/pradel-jax&utm_campaign=Badge_Grade)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/user/pradel-jax)
