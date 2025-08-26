@@ -1,0 +1,5 @@
+model_name,log_likelihood,aic,n_parameters,strategy_used,success,delta_aic,aic_weight,substantial_support
+phi~1 + gender_p~1_f~1,-1010173.5,2020355.0,4,scipy_lbfgs,True,0.0,1.0,True
+phi~1 + gender_p~1_f~1 + gender,-1012895.9375,2025801.875,5,scipy_lbfgs,True,5446.875,0.0,False
+phi~1_p~1_f~1,-1034842.5625,2069691.125,3,scipy_lbfgs,True,49336.125,0.0,False
+phi~1_p~1_f~1 + gender,-1037564.8125,2075137.625,4,scipy_lbfgs,True,54782.625,0.0,False

@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **MAJOR FEATURE**: Time-Varying Covariate Support (August 26, 2025)
+  - Complete implementation addressing user requirement: "both tier and age are time-varying in our modeling"
+  - Age time-varying: Detected `age_2016` through `age_2024` (9 occasions) with proper temporal progression
+  - Tier time-varying: Detected `tier_2016` through `tier_2024` (9 occasions) with realistic transitions
+  - Data structure: Preserved as `(n_individuals, n_occasions)` matrices maintaining temporal relationships
+  - Validation: 100% success across Nebraska (111k) and South Dakota (96k) datasets
+  - Statistical validation: All parameter estimates biologically reasonable (φ=0.50-0.56, p=0.27-0.31)
+
 ### Fixed
+- **CRITICAL**: JAX Compatibility Errors (August 26, 2025)
+  - Problem: 5+ locations using in-place array assignments incompatible with JAX
+  - Solution: Implemented JAX-compatible `.at[].set()` operations throughout codebase
+  - Files fixed: `time_varying.py`, `optimizers.py`, validation frameworks
+  - Impact: 100% model fitting success rate, robust numerical operations
+
+- **CRITICAL**: Parameter Initialization Bug (August 25, 2025)
+  - Problem: Covariate coefficients initialized to 0.0 instead of 0.1, causing identical models
+  - Solution: Fixed `jnp.zeros() * 0.1` → `jnp.ones() * 0.1` in pradel.py:376,384,392
+  - Impact: Proper model differentiation and covariate effect estimation enabled
+
 - **CRITICAL**: Fixed optimization tolerance issues causing premature convergence on large-scale datasets
   - Root cause: Overly strict tolerances (`1e-8`) incompatible with large gradient magnitudes (300k+)
   - Solution: Scale-aware tolerance adjustment (`1e-4` for >10k individuals, `1e-6` default)

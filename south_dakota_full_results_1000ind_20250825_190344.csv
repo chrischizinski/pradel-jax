@@ -1,0 +1,65 @@
+model_name,log_likelihood,aic,n_parameters,strategy_used,success
+phi~1_p~1_f~1,-8784.33203125,17574.6640625,3,scipy_lbfgs,True
+phi~1_p~1_f~1 + gender,-8805.748046875,17619.49609375,4,scipy_lbfgs,True
+phi~1_p~1_f~1 + tier,-8805.748046875,17619.49609375,4,scipy_lbfgs,True
+phi~1_p~1_f~1 + age_2020,-12390.2373046875,24788.474609375,4,scipy_lbfgs,True
+phi~1_p~1_f~1 + gender + tier,-8829.22265625,17668.4453125,5,scipy_lbfgs,True
+phi~1_p~1_f~1 + gender + age_2020,-8571.703125,17153.40625,5,scipy_lbfgs,True
+phi~1_p~1_f~1 + tier + age_2020,-8571.703125,17153.40625,5,scipy_lbfgs,True
+phi~1_p~1_f~1 + gender + tier + age_2020,-8571.703125,17155.40625,6,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1,-8589.3828125,17186.765625,4,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1 + gender,-8610.7998046875,17231.599609375,5,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1 + tier,-8610.7998046875,17231.599609375,5,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1 + age_2020,-8376.7548828125,16763.509765625,5,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1 + gender + tier,-8634.2734375,17280.546875,6,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1 + gender + age_2020,-8376.7548828125,16765.509765625,6,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1 + tier + age_2020,-8376.7548828125,16765.509765625,6,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1 + gender + tier + age_2020,-12505.775390625,25025.55078125,7,scipy_lbfgs,True
+phi~1 + tier_p~1_f~1,-8589.3828125,17186.765625,4,scipy_lbfgs,True
+phi~1 + tier_p~1_f~1 + gender,-8610.7998046875,17231.599609375,5,scipy_lbfgs,True
+phi~1 + tier_p~1_f~1 + tier,-8610.7998046875,17231.599609375,5,scipy_lbfgs,True
+phi~1 + tier_p~1_f~1 + age_2020,-8376.7548828125,16763.509765625,5,scipy_lbfgs,True
+phi~1 + tier_p~1_f~1 + gender + tier,-8634.2734375,17280.546875,6,scipy_lbfgs,True
+phi~1 + tier_p~1_f~1 + gender + age_2020,-8376.7548828125,16765.509765625,6,scipy_lbfgs,True
+phi~1 + tier_p~1_f~1 + tier + age_2020,-8376.7548828125,16765.509765625,6,scipy_lbfgs,True
+phi~1 + tier_p~1_f~1 + gender + tier + age_2020,-12505.775390625,25025.55078125,7,scipy_lbfgs,True
+phi~1 + age_2020_p~1_f~1,-6545.31005859375,13098.6201171875,4,scipy_lbfgs,True
+phi~1 + age_2020_p~1_f~1 + gender,-6566.7275390625,13143.455078125,5,scipy_lbfgs,True
+phi~1 + age_2020_p~1_f~1 + tier,-6566.7275390625,13143.455078125,5,scipy_lbfgs,True
+phi~1 + age_2020_p~1_f~1 + age_2020,-6332.681640625,12675.36328125,5,scipy_lbfgs,True
+phi~1 + age_2020_p~1_f~1 + gender + tier,-6590.2001953125,13192.400390625,6,scipy_lbfgs,True
+phi~1 + age_2020_p~1_f~1 + gender + age_2020,-6332.681640625,12677.36328125,6,scipy_lbfgs,True
+phi~1 + age_2020_p~1_f~1 + tier + age_2020,-6332.681640625,12677.36328125,6,scipy_lbfgs,True
+phi~1 + age_2020_p~1_f~1 + gender + tier + age_2020,-10546.583984375,21107.16796875,7,scipy_lbfgs,True
+phi~1 + gender + tier_p~1_f~1,-8406.796875,16823.59375,5,scipy_lbfgs,True
+phi~1 + gender + tier_p~1_f~1 + gender,-8428.21484375,16868.4296875,6,scipy_lbfgs,True
+phi~1 + gender + tier_p~1_f~1 + tier,-8428.21484375,16868.4296875,6,scipy_lbfgs,True
+phi~1 + gender + tier_p~1_f~1 + age_2020,-8194.16796875,16400.3359375,6,scipy_lbfgs,True
+phi~1 + gender + tier_p~1_f~1 + gender + tier,-8451.6875,16917.375,7,scipy_lbfgs,True
+phi~1 + gender + tier_p~1_f~1 + gender + age_2020,-8194.16796875,16402.3359375,7,scipy_lbfgs,True
+phi~1 + gender + tier_p~1_f~1 + tier + age_2020,-8194.16796875,16402.3359375,7,scipy_lbfgs,True
+phi~1 + gender + tier_p~1_f~1 + gender + tier + age_2020,-8194.16796875,16404.3359375,8,scipy_lbfgs,True
+phi~1 + gender + age_2020_p~1_f~1,-6523.2021484375,13056.404296875,5,scipy_lbfgs,True
+phi~1 + gender + age_2020_p~1_f~1 + gender,-6544.6201171875,13101.240234375,6,scipy_lbfgs,True
+phi~1 + gender + age_2020_p~1_f~1 + tier,-6544.6201171875,13101.240234375,6,scipy_lbfgs,True
+phi~1 + gender + age_2020_p~1_f~1 + age_2020,-6310.57421875,12633.1484375,6,scipy_lbfgs,True
+phi~1 + gender + age_2020_p~1_f~1 + gender + tier,-6568.09375,13150.1875,7,scipy_lbfgs,True
+phi~1 + gender + age_2020_p~1_f~1 + gender + age_2020,-6310.57421875,12635.1484375,7,scipy_lbfgs,True
+phi~1 + gender + age_2020_p~1_f~1 + tier + age_2020,-6310.57421875,12635.1484375,7,scipy_lbfgs,True
+phi~1 + gender + age_2020_p~1_f~1 + gender + tier + age_2020,-10524.5009765625,21065.001953125,8,scipy_lbfgs,True
+phi~1 + tier + age_2020_p~1_f~1,-6523.2021484375,13056.404296875,5,scipy_lbfgs,True
+phi~1 + tier + age_2020_p~1_f~1 + gender,-6544.6201171875,13101.240234375,6,scipy_lbfgs,True
+phi~1 + tier + age_2020_p~1_f~1 + tier,-6544.6201171875,13101.240234375,6,scipy_lbfgs,True
+phi~1 + tier + age_2020_p~1_f~1 + age_2020,-6310.57421875,12633.1484375,6,scipy_lbfgs,True
+phi~1 + tier + age_2020_p~1_f~1 + gender + tier,-6568.09375,13150.1875,7,scipy_lbfgs,True
+phi~1 + tier + age_2020_p~1_f~1 + gender + age_2020,-6310.57421875,12635.1484375,7,scipy_lbfgs,True
+phi~1 + tier + age_2020_p~1_f~1 + tier + age_2020,-6310.57421875,12635.1484375,7,scipy_lbfgs,True
+phi~1 + tier + age_2020_p~1_f~1 + gender + tier + age_2020,-10524.5009765625,21065.001953125,8,scipy_lbfgs,True
+phi~1 + gender + tier + age_2020_p~1_f~1,-6502.9951171875,13017.990234375,6,scipy_lbfgs,True
+phi~1 + gender + tier + age_2020_p~1_f~1 + gender,-6524.412109375,13062.82421875,7,scipy_lbfgs,True
+phi~1 + gender + tier + age_2020_p~1_f~1 + tier,-6524.412109375,13062.82421875,7,scipy_lbfgs,True
+phi~1 + gender + tier + age_2020_p~1_f~1 + age_2020,-10185.859375,20385.71875,7,scipy_lbfgs,True
+phi~1 + gender + tier + age_2020_p~1_f~1 + gender + tier,-6345.00341796875,12706.0068359375,8,scipy_lbfgs,True
+phi~1 + gender + tier + age_2020_p~1_f~1 + gender + age_2020,-6290.3671875,12596.734375,8,scipy_lbfgs,True
+phi~1 + gender + tier + age_2020_p~1_f~1 + tier + age_2020,-6290.3671875,12596.734375,8,scipy_lbfgs,True
+phi~1 + gender + tier + age_2020_p~1_f~1 + gender + tier + age_2020,-6290.3671875,12598.734375,9,scipy_lbfgs,True

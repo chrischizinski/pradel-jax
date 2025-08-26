@@ -2,7 +2,7 @@
 
 from .adapters import (
     DataFormatAdapter,
-    RMarkFormatAdapter, 
+    RMarkFormatAdapter,
     GenericFormatAdapter,
     detect_data_format,
     load_data,
@@ -12,7 +12,7 @@ from .sampling import (
     train_validation_split,
     load_data_with_sampling,
     determine_tier_status,
-    get_sampling_summary
+    get_sampling_summary,
 )
 from .processor import DataProcessor
 from .validator import DataValidator
@@ -20,7 +20,7 @@ from .validator import DataValidator
 __all__ = [
     "DataFormatAdapter",
     "RMarkFormatAdapter",
-    "GenericFormatAdapter", 
+    "GenericFormatAdapter",
     "detect_data_format",
     "load_data",
     "stratified_sample",

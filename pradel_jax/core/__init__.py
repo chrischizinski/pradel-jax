@@ -10,7 +10,7 @@ from .exceptions import (
 
 __all__ = [
     "PradelJaxError",
-    "DataFormatError", 
+    "DataFormatError",
     "ModelSpecificationError",
     "OptimizationError",
     "ValidationError",

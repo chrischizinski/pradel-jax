@@ -483,23 +483,24 @@ class StrategySelector:
 
         n_individuals = characteristics.n_individuals
 
-        # Large-scale dataset strategies (>100k individuals)
-        if n_individuals > 100000:
-            if n_individuals > 500000:  # Very large datasets
-                return [
-                    OptimizationStrategy.DATA_PARALLEL,
-                    OptimizationStrategy.STREAMING_ADAM,
-                    OptimizationStrategy.GPU_ACCELERATED,
-                    OptimizationStrategy.MINI_BATCH_SGD,
-                ]
-            else:  # Large datasets
-                return [
-                    OptimizationStrategy.GPU_ACCELERATED,
-                    OptimizationStrategy.MINI_BATCH_SGD,
-                    OptimizationStrategy.STREAMING_ADAM,
-                    OptimizationStrategy.GRADIENT_ACCUMULATION,
-                    OptimizationStrategy.SCIPY_LBFGS,  # Still viable for some cases
-                ]
+        # Large-scale dataset strategies (only for extremely large datasets >500k individuals)
+        # Note: Standard optimizers with tolerance fixes work well up to 500k individuals  
+        if n_individuals > 500000:  # Very large datasets only
+            return [
+                OptimizationStrategy.SCIPY_LBFGS,  # Try standard optimizer first
+                OptimizationStrategy.MULTI_START,  # For robustness
+                OptimizationStrategy.DATA_PARALLEL,
+                OptimizationStrategy.STREAMING_ADAM, 
+                OptimizationStrategy.GPU_ACCELERATED,
+                OptimizationStrategy.MINI_BATCH_SGD,
+            ]
+        elif n_individuals > 200000:  # Large datasets - prefer standard with fallback
+            return [
+                OptimizationStrategy.SCIPY_LBFGS,  # Standard optimizer works well
+                OptimizationStrategy.MULTI_START,  # For robustness
+                OptimizationStrategy.GPU_ACCELERATED,
+                OptimizationStrategy.GRADIENT_ACCUMULATION,
+            ]
 
         # Medium-scale datasets (10k-100k individuals)
         elif n_individuals > 10000:

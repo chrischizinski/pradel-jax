@@ -14,18 +14,16 @@ __all__ = [
     "parse_formula",
     "build_design_matrix",
     "create_simple_spec",
-    
     # Core classes
     "FormulaParser",
-    "DesignMatrixBuilder", 
+    "DesignMatrixBuilder",
     "FormulaSpec",
     "ParameterFormula",
     "ParameterType",
-    
     # Term types
     "Term",
     "InterceptTerm",
-    "VariableTerm", 
+    "VariableTerm",
     "InteractionTerm",
     "FunctionTerm",
 ]

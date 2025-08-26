@@ -5,7 +5,7 @@ from .validation import validate_array_dimensions, validate_positive
 
 __all__ = [
     "get_logger",
-    "setup_logging", 
+    "setup_logging",
     "validate_array_dimensions",
     "validate_positive",
 ]
