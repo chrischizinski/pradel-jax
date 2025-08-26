@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Comprehensive Nebraska Data Analysis Script
-Randomly samples specified number of rows from Nebraska encounter history data 
+Comprehensive Capture-Recapture Data Analysis Script
+Randomly samples specified number of rows from capture-recapture encounter history data 
 and fits all combinations of Pradel models with φ and f covariates, p(1).
+
+Supports multiple datasets:
+- Nebraska (NE): encounter_histories_ne_clean.csv
+- South Dakota (SD): encounter_histories_sd_clean.csv
 """
 
 import pandas as pd
@@ -18,6 +22,44 @@ import gc
 from pathlib import Path
 from itertools import combinations
 import multiprocessing as mp
+
+# Dataset configurations
+DATASET_CONFIGS = {
+    'nebraska': {
+        'file': 'data/encounter_histories_ne_clean.csv',
+        'name': 'Nebraska',
+        'abbrev': 'NE',
+        'covariates': ['gender', 'age', 'tier'],
+        'age_column': 'age',  # Standardized age column
+    },
+    'south_dakota': {
+        'file': 'data/encounter_histories_sd_clean.csv', 
+        'name': 'South Dakota',
+        'abbrev': 'SD',
+        'covariates': ['gender', 'tier', 'age_2020'],
+        'age_column': 'age_2020',  # Use 2020 age as proxy
+    }
+}
+
+def detect_dataset(data_file_path):
+    """Auto-detect which dataset is being used based on file path."""
+    data_file_str = str(data_file_path).lower()
+    
+    if 'ne_clean' in data_file_str or 'nebraska' in data_file_str:
+        return 'nebraska'
+    elif 'sd_clean' in data_file_str or 'south_dakota' in data_file_str:
+        return 'south_dakota'
+    else:
+        # Default fallback
+        return 'nebraska'
+
+def get_available_datasets():
+    """Get list of available datasets."""
+    available = []
+    for dataset_key, config in DATASET_CONFIGS.items():
+        if Path(config['file']).exists():
+            available.append((dataset_key, config))
+    return available
 
 def generate_formula_combinations(covariates):
     """Generate all possible combinations of covariates for model formulas."""
@@ -39,10 +81,13 @@ def generate_formula_combinations(covariates):
     return formulas
 
 def main():
-    """Run comprehensive Pradel model analysis on a random sample of Nebraska data."""
+    """Run comprehensive Pradel model analysis on capture-recapture data."""
     
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Nebraska Pradel Model Analysis')
+    parser = argparse.ArgumentParser(description='Capture-Recapture Pradel Model Analysis')
+    parser.add_argument('--dataset', '-d', type=str, choices=['nebraska', 'south_dakota', 'auto'], 
+                       default='auto', help='Dataset to analyze (default: auto-detect)')
+    parser.add_argument('--data-file', type=str, help='Custom data file path (overrides --dataset)')
     parser.add_argument('--sample-size', '-n', type=int, default=1000,
                        help='Number of individuals to sample (default: 1000, use 0 for full dataset)')
     parser.add_argument('--max-models', type=int, default=64,
@@ -51,27 +96,64 @@ def main():
                        help='Use parallel processing for large datasets')
     parser.add_argument('--chunk-size', type=int, default=10000,
                        help='Chunk size for memory-efficient processing (default: 10000)')
+    parser.add_argument('--list-datasets', action='store_true',
+                       help='List available datasets and exit')
     args = parser.parse_args()
     
-    if args.sample_size == 0:
-        print("🔬 Nebraska Capture-Recapture Analysis - Full Dataset")
-    else:
-        print("🔬 Nebraska Capture-Recapture Analysis - Random Sample")
-    print("=" * 60)
+    # Handle list datasets option
+    if args.list_datasets:
+        print("📊 Available Datasets:")
+        print("=" * 40)
+        available = get_available_datasets()
+        if not available:
+            print("❌ No datasets found in data/ directory")
+            print("Expected files:")
+            for key, config in DATASET_CONFIGS.items():
+                print(f"  - {config['file']} ({config['name']})")
+        else:
+            for dataset_key, config in available:
+                file_size = Path(config['file']).stat().st_size / (1024**2)  # MB
+                print(f"✅ {config['name']} ({config['abbrev']})")
+                print(f"   File: {config['file']}")
+                print(f"   Size: {file_size:.1f} MB")
+                print(f"   Covariates: {', '.join(config['covariates'])}")
+                print()
+        sys.exit(0)
     
-    # Data file path (relative to project root)
-    data_file = "data/encounter_histories_ne_clean.csv"
+    # Determine dataset and configuration
+    if args.data_file:
+        # Custom data file provided
+        data_file = args.data_file
+        dataset_key = detect_dataset(data_file)
+        dataset_config = DATASET_CONFIGS[dataset_key]
+        print(f"🔬 Custom Dataset Analysis: {data_file}")
+    elif args.dataset == 'auto':
+        # Auto-detect from available datasets
+        available = get_available_datasets()
+        if not available:
+            print("❌ No datasets found! Use --list-datasets to see expected files.")
+            sys.exit(1)
+        dataset_key, dataset_config = available[0]  # Use first available
+        data_file = dataset_config['file']
+        print(f"🔬 Auto-detected: {dataset_config['name']} Dataset Analysis")
+    else:
+        # Specific dataset requested
+        dataset_key = args.dataset
+        dataset_config = DATASET_CONFIGS[dataset_key]
+        data_file = dataset_config['file']
+        print(f"🔬 {dataset_config['name']} Dataset Analysis")
+    
+    # Add sample size info
+    if args.sample_size == 0:
+        print("   📊 Mode: Full Dataset")
+    else:
+        print(f"   📊 Mode: Random Sample ({args.sample_size:,} individuals)")
+    print("=" * 60)
     
     # Check if data file exists
     if not Path(data_file).exists():
         print(f"❌ Error: Data file not found: {data_file}")
-        print("Available data files:")
-        data_dir = Path("data")
-        if data_dir.exists():
-            for f in data_dir.glob("*.csv"):
-                print(f"  - {f}")
-        else:
-            print("Data directory not found. Make sure you're running from examples/nebraska/")
+        print("Use --list-datasets to see available datasets.")
         sys.exit(1)
     
     try:
@@ -111,7 +193,7 @@ def main():
         
         # Save sampled data to temporary file for loading
         print("🔧 Converting to pradel-jax format...")
-        temp_file = "temp_nebraska_sample.csv"
+        temp_file = f"temp_{dataset_config['abbrev'].lower()}_sample.csv"
         sampled_data.to_csv(temp_file, index=False)
         
         # CRITICAL FIX: Preprocess covariates before loading
@@ -124,11 +206,13 @@ def main():
             sampled_data['gender'] = sampled_data['gender'].map({1.0: 'Male', 2.0: 'Female'})
             print(f"   ✅ Gender: {sampled_data['gender'].value_counts().to_dict()}")
         
-        # Standardize age for numerical stability
-        if 'age' in sampled_data.columns:
-            original_age = sampled_data['age'].copy()
-            sampled_data['age'] = (sampled_data['age'] - sampled_data['age'].mean()) / sampled_data['age'].std()
-            print(f"   ✅ Age: standardized (mean={original_age.mean():.1f}, std={original_age.std():.1f})")
+        # Standardize age for numerical stability (use dataset-specific age column)
+        age_column = dataset_config['age_column']
+        if age_column in sampled_data.columns:
+            original_age = sampled_data[age_column].copy()
+            # Create standardized 'age' column for modeling
+            sampled_data['age'] = (sampled_data[age_column] - sampled_data[age_column].mean()) / sampled_data[age_column].std()
+            print(f"   ✅ Age ({age_column}): standardized (mean={original_age.mean():.1f}, std={original_age.std():.1f})")
         
         # Simplify tier_history to meaningful categories
         if 'tier_history' in sampled_data.columns:
@@ -177,15 +261,22 @@ def main():
         main_covariates = [k for k in data_context.covariates.keys() 
                           if not k.endswith('_categories') and not k.endswith('_is_categorical')]
         
-        # Define target covariates for modeling (including tier)
+        # Define target covariates for modeling based on dataset configuration
         target_covariates = []
-        for cov in ['gender', 'age', 'tier']:
+        for cov in dataset_config['covariates']:
             if cov in main_covariates:
                 target_covariates.append(cov)
         
-        # Add tier_history if tier is not available but tier_history is
+        # Handle dataset-specific covariate fallbacks
         if 'tier' not in target_covariates and 'tier_history' in main_covariates:
             target_covariates.append('tier_history')
+        
+        # For South Dakota: add age covariates if available
+        if dataset_key == 'south_dakota':
+            age_vars = [col for col in main_covariates if col.startswith('age_') and col != age_column]
+            for age_var in age_vars[:2]:  # Limit to prevent overparameterization
+                if age_var not in target_covariates:
+                    target_covariates.append(age_var)
             
         print(f"   Target covariates for modeling: {target_covariates}")
         
@@ -351,17 +442,34 @@ def main():
                             # Optimize
                             result = optimize_model(**optimization_kwargs)
                         
-                            # Convert to compatible result format
+                            # Convert to compatible result format with statistical inference
                             if result.success:
+                                # Generate parameter names from formula specification
+                                from pradel_jax.optimization.statistical_inference import generate_parameter_names
+                                param_names = generate_parameter_names(formula_spec, data_context)
+                                
+                                # Set up statistical inference (standard errors, confidence intervals)
+                                result.result.set_statistical_info(
+                                    param_names, 
+                                    data_context.n_individuals, 
+                                    objective_function=objective
+                                )
+                                
+                                # Create enhanced model result with statistical inference
                                 model_result = type('ModelResult', (), {
                                     'success': True,
                                     'model_name': model_name,
                                     'log_likelihood': -result.result.fun,
-                                'parameters': result.result.x,
-                                'n_parameters': len(result.result.x),
-                                'strategy_used': result.strategy_used,
-                                'aic': 2 * len(result.result.x) + 2 * result.result.fun,
-                                'lambda_mean': None  # Would need to calculate from parameters
+                                    'parameters': result.result.x,
+                                    'n_parameters': len(result.result.x),
+                                    'strategy_used': result.strategy_used,
+                                    'aic': result.result.aic,  # Use computed AIC from statistical inference
+                                    'bic': result.result.bic,  # BIC available too
+                                    'parameter_names': param_names,
+                                    'standard_errors': result.result.standard_errors,
+                                    'confidence_intervals': result.result.confidence_intervals,
+                                    'parameter_summary': result.result.get_parameter_summary(),
+                                    'lambda_mean': None  # Would need to calculate from parameters
                                 })()
                             else:
                                 model_result = type('ModelResult', (), {
@@ -419,8 +527,20 @@ def main():
                 print(f"{rank_symbol} {result.model_name}")
                 print(f"   Log-likelihood: {result.log_likelihood:.3f}")
                 print(f"   AIC: {result.aic:.3f}")
+                if hasattr(result, 'bic') and result.bic is not None:
+                    print(f"   BIC: {result.bic:.3f}")
                 print(f"   Parameters: {result.n_parameters}")
                 print(f"   Strategy: {result.strategy_used}")
+                
+                # Statistical inference information
+                if hasattr(result, 'standard_errors') and result.standard_errors is not None:
+                    se_range = f"[{np.min(result.standard_errors):.4f}, {np.max(result.standard_errors):.4f}]"
+                    print(f"   Standard Error Range: {se_range}")
+                
+                if hasattr(result, 'parameter_summary') and result.parameter_summary is not None:
+                    n_significant = sum(1 for param_info in result.parameter_summary.values() 
+                                      if param_info.get('p_value', 1.0) < 0.05)
+                    print(f"   Significant Parameters (p<0.05): {n_significant}/{result.n_parameters}")
                 
                 # Population growth rate information
                 if hasattr(result, 'lambda_mean') and result.lambda_mean is not None:
@@ -428,12 +548,59 @@ def main():
                 
                 print()  # Blank line between models
             
-            # Best model summary
+            # Best model summary with detailed statistical inference
             best_model = successful_results[0]
-            print("🏆 Best Model Summary:")
+            print("🏆 Best Model Detailed Summary:")
             print(f"   Model: {best_model.model_name}")
             print(f"   AIC: {best_model.aic:.3f}")
-            print(f"   Parameter estimates: {[f'{p:.4f}' for p in best_model.parameters]}")
+            if hasattr(best_model, 'bic') and best_model.bic is not None:
+                print(f"   BIC: {best_model.bic:.3f}")
+            print(f"   Log-likelihood: {best_model.log_likelihood:.3f}")
+            print(f"   Strategy: {best_model.strategy_used}")
+            
+            # Detailed parameter table for best model
+            if hasattr(best_model, 'parameter_summary') and best_model.parameter_summary is not None:
+                print(f"\n   📋 Parameter Estimates:")
+                print(f"   {'Parameter':<15} {'Estimate':<10} {'SE':<10} {'95% CI':<20} {'p-value':<8}")
+                print(f"   {'-'*70}")
+                
+                for param_name, info in best_model.parameter_summary.items():
+                    estimate = info.get('estimate', 0)
+                    se = info.get('std_error', None)
+                    p_val = info.get('p_value', None)
+                    
+                    # Find 95% CI
+                    ci_lower = info.get('ci_lower_95%', None)
+                    ci_upper = info.get('ci_upper_95%', None)
+                    
+                    # Format values
+                    est_str = f"{estimate:8.4f}"
+                    se_str = f"{se:8.4f}" if se is not None else "   --   "
+                    ci_str = f"({ci_lower:6.3f}, {ci_upper:6.3f})" if ci_lower is not None else "      --       "
+                    p_str = f"{p_val:.4f}" if p_val is not None else "  --  "
+                    
+                    # Add significance indicator
+                    sig_indicator = " *" if p_val is not None and p_val < 0.05 else ""
+                    
+                    print(f"   {param_name:<15} {est_str:<10} {se_str:<10} {ci_str:<20} {p_str:<8}{sig_indicator}")
+                
+                print(f"   {'-'*70}")
+                print(f"   * p < 0.05")
+            else:
+                print(f"   Parameter estimates: {[f'{p:.4f}' for p in best_model.parameters]}")
+                
+            # Model comparison summary if multiple models
+            if len(successful_results) > 1:
+                print(f"\n   📊 Model Support:")
+                second_best = successful_results[1]
+                delta_aic = second_best.aic - best_model.aic
+                print(f"   Δ AIC vs next best: {delta_aic:.3f}")
+                if delta_aic > 2:
+                    print(f"   Strong evidence for best model (Δ AIC > 2)")
+                elif delta_aic > 4:
+                    print(f"   Very strong evidence for best model (Δ AIC > 4)")
+                elif delta_aic > 10:
+                    print(f"   Overwhelming evidence for best model (Δ AIC > 10)")
             
         else:
             print("❌ No models converged successfully")
@@ -454,26 +621,56 @@ def main():
             
             # 1. Full results export (MARK-compatible CSV)
             print(f"   📊 Creating comprehensive results table...")
-            full_results_file = f"nebraska_full_results_{sample_size}ind_{timestamp}.csv"
+            dataset_prefix = dataset_config['abbrev'].lower()
+            full_results_file = f"{dataset_prefix}_full_results_{sample_size}ind_{timestamp}.csv"
             
-            # Create results DataFrame manually since the old export API may not work
+            # Create comprehensive results DataFrame with statistical inference
             import pandas as pd
             results_data = []
             for result in results:
                 if hasattr(result, 'success') and result.success:
-                    results_data.append({
+                    # Base model information
+                    result_dict = {
                         'model_name': result.model_name,
                         'log_likelihood': result.log_likelihood,
                         'aic': result.aic,
+                        'bic': getattr(result, 'bic', None),
                         'n_parameters': result.n_parameters,
                         'strategy_used': result.strategy_used,
                         'success': result.success
-                    })
+                    }
+                    
+                    # Statistical inference information
+                    if hasattr(result, 'standard_errors') and result.standard_errors is not None:
+                        result_dict['se_min'] = np.min(result.standard_errors)
+                        result_dict['se_max'] = np.max(result.standard_errors)
+                        result_dict['se_mean'] = np.mean(result.standard_errors)
+                    
+                    if hasattr(result, 'parameter_summary') and result.parameter_summary is not None:
+                        # Count significant parameters
+                        n_significant = sum(1 for info in result.parameter_summary.values() 
+                                          if info.get('p_value', 1.0) < 0.05)
+                        result_dict['n_significant_params'] = n_significant
+                        result_dict['pct_significant'] = n_significant / result.n_parameters * 100
+                        
+                        # Add individual parameter estimates with names
+                        if hasattr(result, 'parameter_names') and result.parameter_names is not None:
+                            for i, (param_name, param_value) in enumerate(zip(result.parameter_names, result.parameters)):
+                                result_dict[f'param_{param_name}'] = param_value
+                                if param_name in result.parameter_summary:
+                                    param_info = result.parameter_summary[param_name]
+                                    result_dict[f'se_{param_name}'] = param_info.get('std_error', None)
+                                    result_dict[f'pval_{param_name}'] = param_info.get('p_value', None)
+                                    result_dict[f'ci_lower_{param_name}'] = param_info.get('ci_lower_95%', None)
+                                    result_dict[f'ci_upper_{param_name}'] = param_info.get('ci_upper_95%', None)
+                    
+                    results_data.append(result_dict)
                 else:
                     results_data.append({
                         'model_name': getattr(result, 'model_name', 'Unknown'),
                         'log_likelihood': None,
                         'aic': None,
+                        'bic': None,
                         'n_parameters': None,
                         'strategy_used': None,
                         'success': False,
@@ -483,36 +680,108 @@ def main():
             export_df = pd.DataFrame(results_data)
             export_df.to_csv(full_results_file, index=False)
             
-            # 2. Model comparison table (publication-ready)
-            print(f"   🏆 Creating model comparison table...")
+            # 2. Model comparison table (publication-ready) using statistical inference framework
+            print(f"   🏆 Creating model comparison table with statistical inference...")
             successful_df = export_df[export_df['success'] == True].copy()
             if len(successful_df) > 0:
-                successful_df = successful_df.sort_values('aic')
-                successful_df['delta_aic'] = successful_df['aic'] - successful_df['aic'].min()
-                successful_df['aic_weight'] = np.exp(-0.5 * successful_df['delta_aic'])
-                successful_df['aic_weight'] = successful_df['aic_weight'] / successful_df['aic_weight'].sum()
-                successful_df['substantial_support'] = successful_df['delta_aic'] <= 2.0
+                # Use the comprehensive model comparison from statistical inference framework
+                from pradel_jax.optimization.statistical_inference import compare_models, print_model_comparison
                 
-                comparison_df = successful_df
-                comparison_file = f"nebraska_model_comparison_{sample_size}ind_{timestamp}.csv"
+                # Create model results dictionary for comparison
+                model_results_for_comparison = {}
+                for result in results:
+                    if hasattr(result, 'success') and result.success:
+                        model_results_for_comparison[result.model_name] = result
+                
+                # Generate comprehensive model comparison
+                if len(model_results_for_comparison) > 1:
+                    comparison_result = compare_models(model_results_for_comparison)
+                    
+                    # Create enhanced comparison DataFrame
+                    successful_df = successful_df.sort_values('aic')
+                    successful_df['delta_aic'] = successful_df['aic'] - successful_df['aic'].min()
+                    
+                    # Add BIC comparisons if available
+                    if 'bic' in successful_df.columns and successful_df['bic'].notna().any():
+                        successful_df['delta_bic'] = successful_df['bic'] - successful_df['bic'].min()
+                    
+                    # AIC weights and evidence ratios
+                    successful_df['aic_weight'] = np.exp(-0.5 * successful_df['delta_aic'])
+                    successful_df['aic_weight'] = successful_df['aic_weight'] / successful_df['aic_weight'].sum()
+                    successful_df['substantial_support'] = successful_df['delta_aic'] <= 2.0
+                    successful_df['strong_support'] = successful_df['delta_aic'] <= 4.0
+                    successful_df['very_strong_support'] = successful_df['delta_aic'] <= 7.0
+                    
+                    # Evidence ratio vs best model
+                    if len(successful_df) > 1:
+                        best_weight = successful_df.iloc[0]['aic_weight']
+                        successful_df['evidence_ratio'] = best_weight / successful_df['aic_weight']
+                    
+                    comparison_df = successful_df
+                else:
+                    comparison_df = successful_df
+                
+                comparison_file = f"{dataset_prefix}_model_comparison_{sample_size}ind_{timestamp}.csv"
                 comparison_df.to_csv(comparison_file, index=False)
             else:
                 import pandas as pd
                 comparison_df = pd.DataFrame()  # Empty comparison if no successful models
             
-            # 3. Parameter summary (simplified for quick reference)
-            print(f"   📋 Creating parameter summary...")
+            # 3. Detailed parameter tables with statistical inference
+            print(f"   📋 Creating comprehensive parameter analysis...")
             if len(comparison_df) > 0:
+                # A. Model selection summary
+                model_cols = ['model_name', 'aic', 'bic', 'n_parameters', 'delta_aic', 'aic_weight', 'evidence_ratio', 'substantial_support', 'strong_support', 'n_significant_params', 'pct_significant']
+                available_model_cols = [col for col in model_cols if col in comparison_df.columns]
+                model_summary = comparison_df[available_model_cols].copy()
+                model_summary_file = f"{dataset_prefix}_model_selection_{sample_size}ind_{timestamp}.csv"
+                model_summary.to_csv(model_summary_file, index=False)
+                
+                # B. Best model parameter details
+                if len(results) > 0 and hasattr(results[0], 'parameter_summary'):
+                    best_result = None
+                    for result in results:
+                        if hasattr(result, 'success') and result.success and hasattr(result, 'parameter_summary') and result.parameter_summary:
+                            best_result = result
+                            break
+                    
+                    if best_result:
+                        param_details_data = []
+                        for param_name, param_info in best_result.parameter_summary.items():
+                            param_details_data.append({
+                                'parameter': param_name,
+                                'estimate': param_info.get('estimate', None),
+                                'std_error': param_info.get('std_error', None),
+                                'z_score': param_info.get('z_score', None),
+                                'p_value': param_info.get('p_value', None),
+                                'ci_lower_95': param_info.get('ci_lower_95%', None),
+                                'ci_upper_95': param_info.get('ci_upper_95%', None),
+                                'significant_05': param_info.get('p_value', 1.0) < 0.05,
+                                'significant_01': param_info.get('p_value', 1.0) < 0.01,
+                                'model_name': best_result.model_name
+                            })
+                        
+                        param_details_df = pd.DataFrame(param_details_data)
+                        param_details_file = f"{dataset_prefix}_best_model_parameters_{sample_size}ind_{timestamp}.csv"
+                        param_details_df.to_csv(param_details_file, index=False)
+                    else:
+                        param_details_file = None
+                else:
+                    param_details_file = None
+                
+                # C. Legacy parameter summary for compatibility
                 param_cols = ['model_name', 'aic', 'n_parameters', 'delta_aic', 'aic_weight', 'substantial_support']
                 available_cols = [col for col in param_cols if col in comparison_df.columns]
                 param_summary = comparison_df[available_cols].copy()
-                param_summary_file = f"nebraska_parameters_{sample_size}ind_{timestamp}.csv"
+                param_summary_file = f"{dataset_prefix}_parameters_{sample_size}ind_{timestamp}.csv"
                 param_summary.to_csv(param_summary_file, index=False)
             else:
+                model_summary_file = None
+                param_details_file = None
                 param_summary_file = None
             
             # 4. Print enhanced analysis summary
-            print(f"\n📊 Nebraska Capture-Recapture Analysis Summary")
+            print(f"\n📊 {dataset_config['name']} Capture-Recapture Analysis Summary")
             print(f"=" * 60)
             print(f"Dataset: {sample_size} individuals, {data_context.n_occasions} occasions")
             print(f"Analysis completed: {timestamp}")
@@ -536,19 +805,34 @@ def main():
             else:
                 print(f"\n❌ No models converged successfully - no model comparison available")
                 
-            # 5. Files generated summary
-            print(f"\n📁 Generated Files:")
+            # 5. Files generated summary with statistical inference
+            print(f"\n📁 Generated Files with Statistical Inference:")
             print(f"   📊 Full Results: {full_results_file}")
-            print(f"       • All parameters, statistics, and metadata")
+            print(f"       • Complete parameter estimates, standard errors, confidence intervals")
+            print(f"       • Statistical significance tests and p-values")
+            print(f"       • All optimization metadata and diagnostics")
+            
             if len(comparison_df) > 0:
+                print(f"   🏆 Model Selection: {model_summary_file}")
+                print(f"       • AIC/BIC rankings with evidence ratios")
+                print(f"       • Statistical support indicators and weights")
+                print(f"       • Parameter significance summaries")
+                
                 print(f"   🏆 Model Comparison: {comparison_file}")
-                print(f"       • Publication-ready model selection table")
-                print(f"       • AIC weights, evidence ratios, support indicators")
+                print(f"       • Detailed model comparison with statistical tests")
+                print(f"       • Publication-ready table with all criteria")
+                
+                if param_details_file:
+                    print(f"   📋 Best Model Parameters: {param_details_file}")
+                    print(f"       • Detailed parameter table with standard errors")
+                    print(f"       • 95% confidence intervals and significance tests")
+                    print(f"       • Z-scores and p-values for hypothesis testing")
+                
                 if param_summary_file:
                     print(f"   📋 Parameter Summary: {param_summary_file}")
-                    print(f"       • Simplified parameter table for quick reference")
+                    print(f"       • Quick reference parameter table (legacy format)")
             else:
-                print(f"   ⚠️  No model comparison files generated (no successful fits)")
+                print(f"   ⚠️  No statistical inference files generated (no successful fits)")
             
             # Performance Summary
             total_time = time.time() - start_time
