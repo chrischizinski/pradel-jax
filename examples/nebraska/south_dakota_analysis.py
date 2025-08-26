@@ -54,13 +54,13 @@ def main():
     args = parser.parse_args()
     
     if args.sample_size == 0:
-        print("🔬 Nebraska Capture-Recapture Analysis - Full Dataset")
+        print("🔬 South Dakota Capture-Recapture Analysis - Full Dataset")
     else:
-        print("🔬 Nebraska Capture-Recapture Analysis - Random Sample")
+        print("🔬 South Dakota Capture-Recapture Analysis - Random Sample")
     print("=" * 60)
     
     # Data file path (relative to project root)
-    data_file = "data/encounter_histories_ne_clean.csv"
+    data_file = "data/encounter_histories_sd_clean.csv"
     
     # Check if data file exists
     if not Path(data_file).exists():
@@ -111,7 +111,7 @@ def main():
         
         # Save sampled data to temporary file for loading
         print("🔧 Converting to pradel-jax format...")
-        temp_file = "temp_nebraska_sample.csv"
+        temp_file = "temp_south_dakota_sample.csv"
         sampled_data.to_csv(temp_file, index=False)
         
         # CRITICAL FIX: Preprocess covariates before loading
@@ -186,6 +186,10 @@ def main():
         # Add tier_history if tier is not available but tier_history is
         if 'tier' not in target_covariates and 'tier_history' in main_covariates:
             target_covariates.append('tier_history')
+            
+        # For South Dakota: use age_2020 as proxy for age if age is not available
+        if 'age' not in target_covariates and 'age_2020' in main_covariates:
+            target_covariates.append('age_2020')
             
         print(f"   Target covariates for modeling: {target_covariates}")
         
@@ -454,7 +458,7 @@ def main():
             
             # 1. Full results export (MARK-compatible CSV)
             print(f"   📊 Creating comprehensive results table...")
-            full_results_file = f"nebraska_full_results_{sample_size}ind_{timestamp}.csv"
+            full_results_file = f"south_dakota_full_results_{sample_size}ind_{timestamp}.csv"
             
             # Create results DataFrame manually since the old export API may not work
             import pandas as pd
@@ -494,7 +498,7 @@ def main():
                 successful_df['substantial_support'] = successful_df['delta_aic'] <= 2.0
                 
                 comparison_df = successful_df
-                comparison_file = f"nebraska_model_comparison_{sample_size}ind_{timestamp}.csv"
+                comparison_file = f"south_dakota_model_comparison_{sample_size}ind_{timestamp}.csv"
                 comparison_df.to_csv(comparison_file, index=False)
             else:
                 import pandas as pd
@@ -506,13 +510,13 @@ def main():
                 param_cols = ['model_name', 'aic', 'n_parameters', 'delta_aic', 'aic_weight', 'substantial_support']
                 available_cols = [col for col in param_cols if col in comparison_df.columns]
                 param_summary = comparison_df[available_cols].copy()
-                param_summary_file = f"nebraska_parameters_{sample_size}ind_{timestamp}.csv"
+                param_summary_file = f"south_dakota_parameters_{sample_size}ind_{timestamp}.csv"
                 param_summary.to_csv(param_summary_file, index=False)
             else:
                 param_summary_file = None
             
             # 4. Print enhanced analysis summary
-            print(f"\n📊 Nebraska Capture-Recapture Analysis Summary")
+            print(f"\n📊 South Dakota Capture-Recapture Analysis Summary")
             print(f"=" * 60)
             print(f"Dataset: {sample_size} individuals, {data_context.n_occasions} occasions")
             print(f"Analysis completed: {timestamp}")
