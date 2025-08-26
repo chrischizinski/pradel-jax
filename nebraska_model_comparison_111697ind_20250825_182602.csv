@@ -1,0 +1,65 @@
+model_name,log_likelihood,aic,n_parameters,strategy_used,success,delta_aic,aic_weight,substantial_support
+phi~1 + age_p~1_f~1,-693262.25,1386532.5,4,scipy_lbfgs,True,0.0,1.0,True
+phi~1 + gender + age + tier_p~1_f~1 + gender + age + tier,-698496.625,1397015.25,11,scipy_lbfgs,True,10482.75,0.0,False
+phi~1 + age + tier_p~1_f~1 + gender + age + tier,-698499.25,1397018.5,10,scipy_lbfgs,True,10486.0,0.0,False
+phi~1 + age_p~1_f~1 + gender + tier,-699063.75,1398141.5,7,scipy_lbfgs,True,11609.0,0.0,False
+phi~1 + gender + tier_p~1_f~1 + age,-985607.8125,1971229.625,7,scipy_lbfgs,True,584697.125,0.0,False
+phi~1 + gender + tier_p~1_f~1,-986043.125,1972098.25,6,scipy_lbfgs,True,585565.75,0.0,False
+phi~1 + gender + tier_p~1_f~1 + gender + age,-988292.4375,1976600.875,8,scipy_lbfgs,True,590068.375,0.0,False
+phi~1 + gender + tier_p~1_f~1 + age + tier,-988385.25,1976788.5,9,scipy_lbfgs,True,590256.0,0.0,False
+phi~1 + gender + tier_p~1_f~1 + gender,-988765.375,1977544.75,7,scipy_lbfgs,True,591012.25,0.0,False
+phi~1 + gender + tier_p~1_f~1 + tier,-988863.25,1977742.5,8,scipy_lbfgs,True,591210.0,0.0,False
+phi~1 + gender + age + tier_p~1_f~1 + age,-989049.5625,1978115.125,8,scipy_lbfgs,True,591582.625,0.0,False
+phi~1 + gender + age + tier_p~1_f~1,-989484.875,1978983.75,7,scipy_lbfgs,True,592451.25,0.0,False
+phi~1 + gender + tier_p~1_f~1 + gender + age + tier,-991325.375,1982670.75,10,scipy_lbfgs,True,596138.25,0.0,False
+phi~1 + gender + age + tier_p~1_f~1 + gender + age,-991734.25,1983486.5,9,scipy_lbfgs,True,596954.0,0.0,False
+phi~1 + gender + age + tier_p~1_f~1 + age + tier,-991827.0,1983674.0,10,scipy_lbfgs,True,597141.5,0.0,False
+phi~1 + gender + tier_p~1_f~1 + gender + tier,-991844.6875,1983707.375,9,scipy_lbfgs,True,597174.875,0.0,False
+phi~1 + gender + age + tier_p~1_f~1 + gender,-992207.1875,1984430.375,8,scipy_lbfgs,True,597897.875,0.0,False
+phi~1 + gender + age + tier_p~1_f~1 + tier,-992305.125,1984628.25,9,scipy_lbfgs,True,598095.75,0.0,False
+phi~1 + gender + age + tier_p~1_f~1 + gender + tier,-995286.375,1990592.75,10,scipy_lbfgs,True,604060.25,0.0,False
+phi~1 + tier_p~1_f~1 + age,-1008860.625,2017733.25,6,scipy_lbfgs,True,631200.75,0.0,False
+phi~1 + tier_p~1_f~1,-1009295.8125,2018601.625,5,scipy_lbfgs,True,632069.125,0.0,False
+phi~1 + gender_p~1_f~1 + age,-1009738.3125,2019486.625,5,scipy_lbfgs,True,632954.125,0.0,False
+phi~1 + gender_p~1_f~1,-1010173.5,2020355.0,4,scipy_lbfgs,True,633822.5,0.0,False
+phi~1 + tier_p~1_f~1 + gender + age,-1011545.125,2023104.25,7,scipy_lbfgs,True,636571.75,0.0,False
+phi~1 + tier_p~1_f~1 + age + tier,-1011637.9375,2023291.875,8,scipy_lbfgs,True,636759.375,0.0,False
+phi~1 + tier_p~1_f~1 + gender,-1012018.25,2024048.5,6,scipy_lbfgs,True,637516.0,0.0,False
+phi~1 + tier_p~1_f~1 + tier,-1012116.0625,2024246.125,7,scipy_lbfgs,True,637713.625,0.0,False
+phi~1 + age + tier_p~1_f~1 + age,-1012419.375,2024852.75,7,scipy_lbfgs,True,638320.25,0.0,False
+phi~1 + gender_p~1_f~1 + gender + age,-1012422.9375,2024857.875,6,scipy_lbfgs,True,638325.375,0.0,False
+phi~1 + gender_p~1_f~1 + age + tier,-1012515.625,2025045.25,7,scipy_lbfgs,True,638512.75,0.0,False
+phi~1 + age + tier_p~1_f~1,-1012854.6875,2025721.375,6,scipy_lbfgs,True,639188.875,0.0,False
+phi~1 + gender_p~1_f~1 + gender,-1012895.9375,2025801.875,5,scipy_lbfgs,True,639269.375,0.0,False
+phi~1 + gender_p~1_f~1 + tier,-1012993.875,2025999.75,6,scipy_lbfgs,True,639467.25,0.0,False
+phi~1 + gender + age_p~1_f~1 + age,-1013323.6875,2026659.375,6,scipy_lbfgs,True,640126.875,0.0,False
+phi~1 + gender + age_p~1_f~1,-1013759.0,2027528.0,5,scipy_lbfgs,True,640995.5,0.0,False
+phi~1 + tier_p~1_f~1 + gender + age + tier,-1014578.125,2029174.25,9,scipy_lbfgs,True,642641.75,0.0,False
+phi~1 + tier_p~1_f~1 + gender + tier,-1015097.3125,2030210.625,8,scipy_lbfgs,True,643678.125,0.0,False
+phi~1 + age + tier_p~1_f~1 + gender + age,-1015104.0,2030224.0,8,scipy_lbfgs,True,643691.5,0.0,False
+phi~1 + age + tier_p~1_f~1 + age + tier,-1015196.875,2030411.75,9,scipy_lbfgs,True,643879.25,0.0,False
+phi~1 + gender_p~1_f~1 + gender + age + tier,-1015455.875,2030927.75,8,scipy_lbfgs,True,644395.25,0.0,False
+phi~1 + age + tier_p~1_f~1 + gender,-1015577.0,2031168.0,7,scipy_lbfgs,True,644635.5,0.0,False
+phi~1 + age + tier_p~1_f~1 + tier,-1015674.875,2031365.75,8,scipy_lbfgs,True,644833.25,0.0,False
+phi~1 + gender_p~1_f~1 + gender + tier,-1015975.125,2031964.25,7,scipy_lbfgs,True,645431.75,0.0,False
+phi~1 + gender + age_p~1_f~1 + gender + age,-1016008.375,2032030.75,7,scipy_lbfgs,True,645498.25,0.0,False
+phi~1 + gender + age_p~1_f~1 + age + tier,-1016101.125,2032218.25,8,scipy_lbfgs,True,645685.75,0.0,False
+phi~1 + gender + age_p~1_f~1 + gender,-1016481.375,2032974.75,6,scipy_lbfgs,True,646442.25,0.0,False
+phi~1 + gender + age_p~1_f~1 + tier,-1016579.1875,2033172.375,7,scipy_lbfgs,True,646639.875,0.0,False
+phi~1 + age + tier_p~1_f~1 + gender + tier,-1018656.125,2037330.25,9,scipy_lbfgs,True,650797.75,0.0,False
+phi~1 + gender + age_p~1_f~1 + gender + age + tier,-1019041.25,2038100.5,9,scipy_lbfgs,True,651568.0,0.0,False
+phi~1 + gender + age_p~1_f~1 + gender + tier,-1019560.5,2039137.0,8,scipy_lbfgs,True,652604.5,0.0,False
+phi~1_p~1_f~1 + age,-1034407.125,2068822.25,4,scipy_lbfgs,True,682289.75,0.0,False
+phi~1 + age_p~1_f~1 + gender,-1034505.125,2069020.25,5,scipy_lbfgs,True,682487.75,0.0,False
+phi~1_p~1_f~1,-1034842.5625,2069691.125,3,scipy_lbfgs,True,683158.625,0.0,False
+phi~1_p~1_f~1 + gender + age,-1037091.8125,2074193.625,5,scipy_lbfgs,True,687661.125,0.0,False
+phi~1_p~1_f~1 + age + tier,-1037184.5625,2074381.125,6,scipy_lbfgs,True,687848.625,0.0,False
+phi~1_p~1_f~1 + gender,-1037564.8125,2075137.625,4,scipy_lbfgs,True,688605.125,0.0,False
+phi~1_p~1_f~1 + tier,-1037662.625,2075335.25,5,scipy_lbfgs,True,688802.75,0.0,False
+phi~1 + age_p~1_f~1 + age,-1038104.75,2076219.5,5,scipy_lbfgs,True,689687.0,0.0,False
+phi~1_p~1_f~1 + gender + age + tier,-1040124.875,2080263.75,7,scipy_lbfgs,True,693731.25,0.0,False
+phi~1_p~1_f~1 + gender + tier,-1040644.0,2081300.0,6,scipy_lbfgs,True,694767.5,0.0,False
+phi~1 + age_p~1_f~1 + gender + age,-1040789.375,2081590.75,6,scipy_lbfgs,True,695058.25,0.0,False
+phi~1 + age_p~1_f~1 + age + tier,-1040882.125,2081778.25,7,scipy_lbfgs,True,695245.75,0.0,False
+phi~1 + age_p~1_f~1 + tier,-1041360.25,2082732.5,6,scipy_lbfgs,True,696200.0,0.0,False
+phi~1 + age_p~1_f~1 + gender + age + tier,-1043822.3125,2087660.625,8,scipy_lbfgs,True,701128.125,0.0,False

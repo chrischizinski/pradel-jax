@@ -10,52 +10,52 @@ from typing import List, Optional, Dict, Any
 class PradelJaxError(Exception):
     """
     Base exception class for pradel-jax with rich error information.
-    
+
     Provides structured error information including suggestions for resolution
     and links to relevant documentation.
     """
-    
+
     def __init__(
-        self, 
-        message: str, 
+        self,
+        message: str,
         suggestions: Optional[List[str]] = None,
         documentation_link: Optional[str] = None,
         error_code: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ):
         self.suggestions = suggestions or []
         self.documentation_link = documentation_link
         self.error_code = error_code
         self.context = context or {}
         super().__init__(message)
-    
+
     def __str__(self) -> str:
         """Return formatted error message with suggestions."""
         message = super().__str__()
-        
+
         if self.error_code:
             message = f"[{self.error_code}] {message}"
-        
+
         if self.suggestions:
             message += "\n\nSuggestions:"
             for i, suggestion in enumerate(self.suggestions, 1):
                 message += f"\n  {i}. {suggestion}"
-        
+
         if self.documentation_link:
             message += f"\n\nDocumentation: {self.documentation_link}"
-        
+
         return message
 
 
 class DataFormatError(PradelJaxError):
     """Exception raised for data format issues."""
-    
+
     def __init__(
-        self, 
+        self,
         detected_format: Optional[str] = None,
         expected_formats: Optional[List[str]] = None,
         specific_issue: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         if detected_format and expected_formats:
             message = f"Unsupported data format: {detected_format}"
@@ -80,30 +80,33 @@ class DataFormatError(PradelJaxError):
                 "Validate your input data structure",
                 "Use pradel_jax.validate_data() for detailed diagnostics",
             ]
-        
+
         # Remove suggestions from kwargs if present to avoid conflict
-        kwargs.pop('suggestions', None)
-        
+        kwargs.pop("suggestions", None)
+
         super().__init__(
             message=message,
             suggestions=suggestions,
             documentation_link="https://docs.pradel-jax.org/data-formats",
             error_code="DATA_FORMAT",
-            context={"detected_format": detected_format, "expected_formats": expected_formats},
-            **kwargs
+            context={
+                "detected_format": detected_format,
+                "expected_formats": expected_formats,
+            },
+            **kwargs,
         )
 
 
 class ModelSpecificationError(PradelJaxError):
     """Exception raised for model specification issues."""
-    
+
     def __init__(
         self,
         formula: Optional[str] = None,
         parameter: Optional[str] = None,
         available_covariates: Optional[List[str]] = None,
         missing_covariates: Optional[List[str]] = None,
-        **kwargs
+        **kwargs,
     ):
         if missing_covariates and available_covariates:
             message = f"Missing covariates in formula '{formula}': {missing_covariates}"
@@ -128,34 +131,34 @@ class ModelSpecificationError(PradelJaxError):
                 "Verify all covariates exist in your data",
                 "Review model specification documentation",
             ]
-        
-        kwargs.pop('suggestions', None)
-        
+
+        kwargs.pop("suggestions", None)
+
         super().__init__(
             message=message,
             suggestions=suggestions,
             documentation_link="https://docs.pradel-jax.org/model-specification",
             error_code="MODEL_SPEC",
             context={
-                "formula": formula, 
+                "formula": formula,
                 "parameter": parameter,
                 "missing_covariates": missing_covariates,
                 "available_covariates": available_covariates,
             },
-            **kwargs
+            **kwargs,
         )
 
 
 class OptimizationError(PradelJaxError):
     """Exception raised for optimization failures."""
-    
+
     def __init__(
         self,
         optimizer: Optional[str] = None,
         reason: Optional[str] = None,
         iterations: Optional[int] = None,
         final_loss: Optional[float] = None,
-        **kwargs
+        **kwargs,
     ):
         if optimizer and reason:
             message = f"Optimization failed with {optimizer}: {reason}"
@@ -163,7 +166,7 @@ class OptimizationError(PradelJaxError):
             message = f"Optimization failed with {optimizer}"
         else:
             message = "Optimization failed to converge"
-        
+
         suggestions = [
             "Try a different optimization strategy",
             "Increase maximum iterations",
@@ -172,15 +175,15 @@ class OptimizationError(PradelJaxError):
             "Simplify the model specification",
             "Check for parameter identifiability issues",
         ]
-        
+
         if iterations and iterations > 500:
             suggestions.insert(0, "Model may be overparameterized")
-        
+
         if final_loss and final_loss > 1e6:
             suggestions.insert(0, "Check for extreme outliers in data")
-        
-        kwargs.pop('suggestions', None)
-        
+
+        kwargs.pop("suggestions", None)
+
         super().__init__(
             message=message,
             suggestions=suggestions,
@@ -188,26 +191,28 @@ class OptimizationError(PradelJaxError):
             error_code="OPTIMIZATION",
             context={
                 "optimizer": optimizer,
-                "reason": reason, 
+                "reason": reason,
                 "iterations": iterations,
                 "final_loss": final_loss,
             },
-            **kwargs
+            **kwargs,
         )
 
 
 class ValidationError(PradelJaxError):
     """Exception raised for validation failures."""
-    
+
     def __init__(
         self,
         validation_type: Optional[str] = None,
         failed_checks: Optional[List[str]] = None,
         reference_software: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         if validation_type and reference_software:
-            message = f"Validation against {reference_software} failed: {validation_type}"
+            message = (
+                f"Validation against {reference_software} failed: {validation_type}"
+            )
             suggestions = [
                 f"Check parameter estimates against {reference_software}",
                 "Verify identical data formatting",
@@ -229,9 +234,9 @@ class ValidationError(PradelJaxError):
                 "Check documentation for validation requirements",
                 "Ensure data meets model assumptions",
             ]
-        
-        kwargs.pop('suggestions', None)
-        
+
+        kwargs.pop("suggestions", None)
+
         super().__init__(
             message=message,
             suggestions=suggestions,
@@ -242,13 +247,13 @@ class ValidationError(PradelJaxError):
                 "failed_checks": failed_checks,
                 "reference_software": reference_software,
             },
-            **kwargs
+            **kwargs,
         )
 
 
 class ConfigurationError(PradelJaxError):
     """Exception raised for configuration issues."""
-    
+
     def __init__(self, config_key: Optional[str] = None, **kwargs):
         if config_key:
             message = f"Invalid configuration for '{config_key}'"
@@ -265,22 +270,22 @@ class ConfigurationError(PradelJaxError):
                 "Verify all required settings are provided",
                 "Review configuration documentation",
             ]
-        
-        kwargs.pop('suggestions', None)
-        
+
+        kwargs.pop("suggestions", None)
+
         super().__init__(
             message=message,
             suggestions=suggestions,
             documentation_link="https://docs.pradel-jax.org/configuration",
             error_code="CONFIG",
             context={"config_key": config_key},
-            **kwargs
+            **kwargs,
         )
 
 
 class ConvergenceError(OptimizationError):
     """Exception raised when optimization fails to converge."""
-    
+
     def __init__(self, **kwargs):
         super().__init__(
             reason="Failed to reach convergence criteria",
@@ -292,13 +297,13 @@ class ConvergenceError(OptimizationError):
                 "Simplify model specification",
                 "Examine data for quality issues",
             ],
-            **kwargs
+            **kwargs,
         )
 
 
 class DataQualityError(DataFormatError):
     """Exception raised for data quality issues."""
-    
+
     def __init__(self, quality_issues: Optional[List[str]] = None, **kwargs):
         if quality_issues:
             message = f"Data quality issues detected: {', '.join(quality_issues)}"
@@ -315,12 +320,12 @@ class DataQualityError(DataFormatError):
                 "Check for missing values and outliers",
                 "Verify capture history completeness",
             ]
-        
-        kwargs.pop('suggestions', None)
-        
+
+        kwargs.pop("suggestions", None)
+
         super().__init__(
             specific_issue=message,
             suggestions=suggestions,
             error_code="DATA_QUALITY",
-            **kwargs
+            **kwargs,
         )

@@ -1,0 +1,133 @@
+{
+  "timestamp": "2025-08-26T08:10:20.989633",
+  "datasets_examined": [
+    {
+      "name": "dipper",
+      "filepath": "/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/data/dipper_dataset.csv",
+      "data_quality": {
+        "error": "Can only use .str accessor with string values!"
+      },
+      "loading_issues": [],
+      "formula_issues": [
+        "Formula 'phi ~ 1 + sex' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'phi ~ 1 + sex_categories' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'p ~ 1 + sex' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'p ~ 1 + sex_categories' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'f ~ 1 + sex' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'f ~ 1 + sex_categories' failed: module 'pradel_jax' has no attribute 'create_formula_spec'"
+      ],
+      "optimization_issues": [
+        "Optimization testing failed: module 'pradel_jax' has no attribute 'fit_model'"
+      ],
+      "statistical_issues": [
+        "Statistical inference testing failed: module 'pradel_jax' has no attribute 'fit_model'"
+      ],
+      "parameter_plausibility": {
+        "survival_rates": {},
+        "detection_rates": {},
+        "entry_rates": {},
+        "biological_warnings": [],
+        "error": "module 'pradel_jax' has no attribute 'fit_model'"
+      },
+      "likelihood_issues": [
+        "Likelihood testing failed: module 'pradel_jax' has no attribute 'create_formula_spec'"
+      ]
+    },
+    {
+      "name": "nebraska",
+      "filepath": "/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/data/encounter_histories_ne_clean.csv",
+      "data_quality": {
+        "error": "Can only use .str accessor with string values!"
+      },
+      "loading_issues": [],
+      "formula_issues": [
+        "Formula 'phi ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'phi ~ 1 + Y2016' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'p ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'p ~ 1 + Y2016' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'f ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'f ~ 1 + Y2016' failed: module 'pradel_jax' has no attribute 'create_formula_spec'"
+      ],
+      "optimization_issues": [
+        "Optimization testing failed: module 'pradel_jax' has no attribute 'fit_model'"
+      ],
+      "statistical_issues": [
+        "Statistical inference testing failed: module 'pradel_jax' has no attribute 'fit_model'"
+      ],
+      "parameter_plausibility": {
+        "survival_rates": {},
+        "detection_rates": {},
+        "entry_rates": {},
+        "biological_warnings": [],
+        "error": "module 'pradel_jax' has no attribute 'fit_model'"
+      },
+      "likelihood_issues": [
+        "Likelihood testing failed: module 'pradel_jax' has no attribute 'create_formula_spec'"
+      ]
+    },
+    {
+      "name": "south_dakota",
+      "filepath": "/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/data/encounter_histories_sd_clean.csv",
+      "data_quality": {
+        "error": "Can only use .str accessor with string values!"
+      },
+      "loading_issues": [],
+      "formula_issues": [
+        "Formula 'phi ~ 1 + customer_id' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'phi ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'p ~ 1 + customer_id' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'p ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'f ~ 1 + customer_id' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+        "Formula 'f ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'"
+      ],
+      "optimization_issues": [
+        "Optimization testing failed: module 'pradel_jax' has no attribute 'fit_model'"
+      ],
+      "statistical_issues": [
+        "Statistical inference testing failed: module 'pradel_jax' has no attribute 'fit_model'"
+      ],
+      "parameter_plausibility": {
+        "survival_rates": {},
+        "detection_rates": {},
+        "entry_rates": {},
+        "biological_warnings": [],
+        "error": "module 'pradel_jax' has no attribute 'fit_model'"
+      },
+      "likelihood_issues": [
+        "Likelihood testing failed: module 'pradel_jax' has no attribute 'create_formula_spec'"
+      ]
+    }
+  ],
+  "process_issues": [
+    "Formula 'phi ~ 1 + sex' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'phi ~ 1 + sex_categories' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'p ~ 1 + sex' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'p ~ 1 + sex_categories' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'f ~ 1 + sex' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'f ~ 1 + sex_categories' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Optimization testing failed: module 'pradel_jax' has no attribute 'fit_model'",
+    "Formula 'phi ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'phi ~ 1 + Y2016' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'p ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'p ~ 1 + Y2016' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'f ~ 1 + tier_history' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'f ~ 1 + Y2016' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'phi ~ 1 + customer_id' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'p ~ 1 + customer_id' failed: module 'pradel_jax' has no attribute 'create_formula_spec'",
+    "Formula 'f ~ 1 + customer_id' failed: module 'pradel_jax' has no attribute 'create_formula_spec'"
+  ],
+  "statistical_issues": [
+    "Statistical inference testing failed: module 'pradel_jax' has no attribute 'fit_model'",
+    "Likelihood testing failed: module 'pradel_jax' has no attribute 'create_formula_spec'"
+  ],
+  "edge_cases": [],
+  "validation_results": {},
+  "recommendations": [
+    "Improve formula parsing error messages and validation",
+    "Implement more robust optimization convergence criteria",
+    "Add numerical stability checks to likelihood computation",
+    "Add comprehensive unit tests for edge cases identified",
+    "Implement real-time model diagnostics during optimization",
+    "Create user-friendly warnings for biological implausibility"
+  ]
+}

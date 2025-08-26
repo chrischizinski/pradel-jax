@@ -1,0 +1,5 @@
+model_name,log_likelihood,aic,n_parameters,strategy_used,success
+phi~1_p~1_f~1,-232.23800659179688,470.47601318359375,3,hybrid_quick_refined,True
+phi~1_p~1_f~1 + gender,-232.9256591796875,473.851318359375,4,hybrid_quick_refined,True
+phi~1 + gender_p~1_f~1,-225.6040496826172,459.2080993652344,4,hybrid_quick_refined,True
+phi~1 + gender_p~1_f~1 + gender,-226.2917022705078,462.5834045410156,5,hybrid_quick_refined,True

@@ -1,0 +1,149 @@
+{
+  "data_processing": {
+    "pipeline_integrity": {
+      "nebraska": {
+        "file_integrity": true,
+        "sample_consistency": {
+          "100": {
+            "age_mean_cv": 0.011665813332806097,
+            "consistent_sampling": "True"
+          },
+          "500": {
+            "age_mean_cv": 0.012081328535455786,
+            "consistent_sampling": "True"
+          },
+          "1000": {
+            "age_mean_cv": 0.009854205469435016,
+            "consistent_sampling": "True"
+          }
+        },
+        "covariate_stability": {},
+        "encounter_validation": {
+          "100": {
+            "error": "'DataContext' object has no attribute 'encounter_histories'"
+          },
+          "500": {
+            "error": "'DataContext' object has no attribute 'encounter_histories'"
+          },
+          "1000": {
+            "error": "'DataContext' object has no attribute 'encounter_histories'"
+          }
+        }
+      },
+      "south_dakota": {
+        "file_integrity": true,
+        "sample_consistency": {
+          "100": {
+            "age_mean_cv": 0.022311621736468768,
+            "consistent_sampling": "True"
+          },
+          "500": {
+            "age_mean_cv": 0.0071417203418749475,
+            "consistent_sampling": "True"
+          },
+          "1000": {
+            "age_mean_cv": 0.010932533427053378,
+            "consistent_sampling": "True"
+          }
+        },
+        "covariate_stability": {},
+        "encounter_validation": {
+          "100": {
+            "error": "'DataContext' object has no attribute 'encounter_histories'"
+          },
+          "500": {
+            "error": "'DataContext' object has no attribute 'encounter_histories'"
+          },
+          "1000": {
+            "error": "'DataContext' object has no attribute 'encounter_histories'"
+          }
+        }
+      }
+    },
+    "covariate_processing": {},
+    "encounter_history_validation": {},
+    "missing_data_handling": {}
+  },
+  "mathematical_model": {
+    "likelihood_computation": {
+      "nebraska": {
+        "likelihood_tests": {
+          "100": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          },
+          "500": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          }
+        },
+        "parameter_tests": {},
+        "gradient_tests": {}
+      },
+      "south_dakota": {
+        "likelihood_tests": {
+          "100": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          },
+          "500": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          }
+        },
+        "parameter_tests": {},
+        "gradient_tests": {}
+      }
+    },
+    "parameter_bounds": {},
+    "gradient_accuracy": {},
+    "model_identifiability": {}
+  },
+  "optimization": {
+    "convergence_consistency": {
+      "nebraska": {
+        "multi_start_consistency": {
+          "100": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          },
+          "500": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          },
+          "1000": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          }
+        },
+        "strategy_comparison": {},
+        "convergence_stability": {}
+      },
+      "south_dakota": {
+        "multi_start_consistency": {
+          "100": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          },
+          "500": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          },
+          "1000": {
+            "error": "[DATA_FORMAT] Data format issue: Inconsistent capture history lengths: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9)]\n\nSuggestions:\n  1. Check your data structure and column names\n  2. Ensure capture histories contain only 0s and 1s\n  3. Verify individual IDs are properly formatted\n  4. Check for missing or corrupted data\n\nDocumentation: https://docs.pradel-jax.org/data-formats"
+          }
+        },
+        "strategy_comparison": {},
+        "convergence_stability": {}
+      }
+    },
+    "strategy_performance": {},
+    "parameter_stability": {}
+  },
+  "statistical_inference": {
+    "parameter_reasonableness": {},
+    "model_selection_stability": {},
+    "confidence_intervals": {}
+  },
+  "cross_dataset_consistency": {
+    "processing_consistency": {},
+    "parameter_scale_consistency": {},
+    "model_behavior_consistency": {}
+  },
+  "numerical_stability": {
+    "scale_invariance": {},
+    "precision_stability": {},
+    "overflow_underflow_handling": {}
+  }
+}

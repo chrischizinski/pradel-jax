@@ -1,0 +1,5 @@
+model_name,log_likelihood,aic,n_parameters,strategy_used,success
+phi~1_p~1_f~1,-185210.859375,370427.71875,3,scipy_lbfgs,True
+phi~1_p~1_f~1 + gender,-185696.78125,371401.5625,4,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1,-180801.46875,361610.9375,4,scipy_lbfgs,True
+phi~1 + gender_p~1_f~1 + gender,-181287.40625,362584.8125,5,scipy_lbfgs,True

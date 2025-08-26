@@ -1,0 +1,5 @@
+model_name,log_likelihood,aic,n_parameters,strategy_used,success
+phi~1_p~1_f~1,-6902793.0,13805592.0,3,mini_batch_sgd,True
+phi~1_p~1_f~1 + gender,-6902793.0,13805594.0,4,mini_batch_sgd,True
+phi~1 + gender_p~1_f~1,-3212349.25,6424706.5,4,mini_batch_sgd,True
+phi~1 + gender_p~1_f~1 + gender,-3212346.5,6424703.0,5,mini_batch_sgd,True

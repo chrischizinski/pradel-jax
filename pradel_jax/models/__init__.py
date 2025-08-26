@@ -9,7 +9,7 @@ from .pradel import PradelModel
 
 __all__ = [
     "CaptureRecaptureModel",
-    "ModelResult", 
+    "ModelResult",
     "ModelRegistry",
     "PradelModel",
 ]

@@ -1,0 +1,62 @@
+{
+  "timestamp": "2025-08-26T08:09:22.224224",
+  "datasets_examined": [
+    {
+      "name": "dipper",
+      "filepath": "/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/data/dipper_dataset.csv",
+      "data_quality": {
+        "error": "Can only use .str accessor with string values!"
+      },
+      "loading_issues": [
+        "Data loading failed: 'GenericFormatAdapter' object has no attribute 'load_data'"
+      ],
+      "formula_issues": [],
+      "optimization_issues": [],
+      "statistical_issues": [],
+      "parameter_plausibility": {},
+      "critical_error": "Failed to load data"
+    },
+    {
+      "name": "nebraska",
+      "filepath": "/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/data/encounter_histories_ne_clean.csv",
+      "data_quality": {
+        "error": "Can only use .str accessor with string values!"
+      },
+      "loading_issues": [
+        "Data loading failed: 'GenericFormatAdapter' object has no attribute 'load_data'"
+      ],
+      "formula_issues": [],
+      "optimization_issues": [],
+      "statistical_issues": [],
+      "parameter_plausibility": {},
+      "critical_error": "Failed to load data"
+    },
+    {
+      "name": "south_dakota",
+      "filepath": "/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/data/encounter_histories_sd_clean.csv",
+      "data_quality": {
+        "error": "Can only use .str accessor with string values!"
+      },
+      "loading_issues": [
+        "Data loading failed: 'GenericFormatAdapter' object has no attribute 'load_data'"
+      ],
+      "formula_issues": [],
+      "optimization_issues": [],
+      "statistical_issues": [],
+      "parameter_plausibility": {},
+      "critical_error": "Failed to load data"
+    }
+  ],
+  "process_issues": [
+    "Data loading failed: 'GenericFormatAdapter' object has no attribute 'load_data'"
+  ],
+  "statistical_issues": [],
+  "edge_cases": [],
+  "validation_results": {},
+  "recommendations": [
+    "Enhance data loading validation and error handling",
+    "Add comprehensive unit tests for edge cases identified",
+    "Implement real-time model diagnostics during optimization",
+    "Create user-friendly warnings for biological implausibility"
+  ]
+}

@@ -9,30 +9,38 @@ __version__ = "2.0.0-alpha"
 __author__ = "Ava Britton, Christopher Chizinski"
 
 # Core data loading
-from .data.adapters import load_data, DataContext, RMarkFormatAdapter, GenericFormatAdapter
+from .data.adapters import (
+    load_data,
+    DataContext,
+    RMarkFormatAdapter,
+    GenericFormatAdapter,
+)
 from .data.sampling import (
-    load_data_with_sampling, 
-    stratified_sample, 
+    load_data_with_sampling,
+    stratified_sample,
     train_validation_split,
     determine_tier_status,
-    get_sampling_summary
+    get_sampling_summary,
 )
 
-# Formula system  
+# Formula system
 from .formulas import FormulaSpec, ParameterFormula, create_simple_spec
+
+# High-level API
+from .core.api import fit_model, create_formula_spec
 
 # Models
 from .models import CaptureRecaptureModel, ModelResult, PradelModel
 from .models.base import ModelType, register_model, get_model, list_available_models
 
-# Configuration 
+# Configuration
 from .config.settings import PradelJaxConfig
 
 # Export functionality
 from .core.export import (
     ResultsExporter,
     export_model_results,
-    create_timestamped_export
+    create_timestamped_export,
 )
 
 # Import key exception classes
@@ -50,21 +58,21 @@ __all__ = [
     # Version info
     "__version__",
     "__author__",
-    
+    # High-level API (primary user interface)
+    "fit_model",
+    "create_formula_spec",
     # Core data loading
     "load_data",
     "load_data_with_sampling",
-    "stratified_sample", 
+    "stratified_sample",
     "train_validation_split",
     "determine_tier_status",
     "get_sampling_summary",
-    "DataContext", 
-    
+    "DataContext",
     # Formula system
     "FormulaSpec",
-    "ParameterFormula", 
+    "ParameterFormula",
     "create_simple_spec",
-    
     # Models
     "CaptureRecaptureModel",
     "ModelResult",
@@ -73,28 +81,25 @@ __all__ = [
     "register_model",
     "get_model",
     "list_available_models",
-    
     # Configuration
     "PradelJaxConfig",
-    
     # Exceptions
     "PradelJaxError",
-    "DataFormatError", 
+    "DataFormatError",
     "ModelSpecificationError",
     "OptimizationError",
-    
     # Data adapters
     "RMarkFormatAdapter",
     "GenericFormatAdapter",
-    
     # Export functionality
     "ResultsExporter",
-    "export_model_results", 
+    "export_model_results",
     "create_timestamped_export",
 ]
 
 # Set up default configuration
 _default_config = None
+
 
 def get_config() -> PradelJaxConfig:
     """Get the global configuration instance."""
@@ -102,6 +107,7 @@ def get_config() -> PradelJaxConfig:
     if _default_config is None:
         _default_config = PradelJaxConfig()
     return _default_config
+
 
 def configure(**kwargs) -> None:
     """Update global configuration."""
