@@ -22,15 +22,26 @@ A **production-ready** JAX-based framework for capture-recapture analysis that c
 
 ### Installation
 
+Choose your setup approach:
+
+**🎯 Basic Setup** (Recommended for most users):
 ```bash
-# Clone and setup in 30 seconds
 git clone https://github.com/chrischizinski/pradel-jax.git
 cd pradel-jax
 ./quickstart.sh
 
 # Activate environment and verify
 source pradel_env/bin/activate
-python -m pytest tests/integration/test_optimization_minimal.py -v
+```
+
+**⚡ Performance Demo** (For large-scale analysis):
+```bash
+git clone https://github.com/chrischizinski/pradel-jax.git
+cd pradel-jax
+./quickstart_parallel.sh  # Includes GPU benchmarking & large-scale demos
+
+# Activate environment
+source pradel_env/bin/activate
 ```
 
 ### Your First Model
