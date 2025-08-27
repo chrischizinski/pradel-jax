@@ -1,6 +1,18 @@
 # Pradel-JAX Architecture Overview
 
-This document provides a high-level overview of the Pradel-JAX architecture and design principles.
+Comprehensive guide to the framework's design, structure, and architectural decisions.
+
+## 🎯 Architecture Goals
+
+Pradel-JAX is designed with five core architectural goals:
+
+1. **Statistical Rigor**: Provide publication-ready statistical inference with proper uncertainty quantification
+2. **Computational Efficiency**: Leverage modern JAX compilation for maximum performance
+3. **Extensibility**: Enable easy addition of new models, optimizers, and data formats
+4. **Usability**: Offer intuitive APIs that feel familiar to R and Python statisticians
+5. **Production Readiness**: Handle real-world data challenges with robust error handling
+
+## 🏗️ System Architecture
 
 ## 🏗️ Framework Architecture
 

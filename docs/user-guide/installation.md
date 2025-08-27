@@ -1,14 +1,36 @@
 # Pradel-JAX Installation Guide
 
-## Quick Start (Basic Installation)
+Complete installation instructions for all environments and use cases.
+
+## 🚀 Quick Installation (Recommended)
+
+The fastest way to get Pradel-JAX running:
 
 ```bash
-# Install core dependencies
-pip install -r requirements.txt
+# Clone repository and auto-setup (creates virtual environment)
+git clone https://github.com/chrischizinski/pradel-jax.git
+cd pradel-jax
+./quickstart.sh
 
-# Test installation
-python -c "from pradel_jax.optimization import optimize_model; print('✓ Optimization framework installed successfully!')"
+# Activate environment
+source pradel_env/bin/activate
+
+# Verify installation
+python -m pytest tests/integration/test_optimization_minimal.py -v
 ```
+
+## 📋 System Requirements
+
+**Minimum Requirements:**
+- Python 3.8+ (Python 3.9+ recommended)
+- 4 GB RAM
+- 2 GB free disk space
+
+**Recommended Configuration:**
+- Python 3.10+
+- 8 GB+ RAM
+- Multi-core CPU
+- GPU (optional, for large datasets)
 
 ## Installation Options
 
