@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Quick start script for Pradel-JAX (Unified Parallel Version)
+# Quick start script for Pradel-JAX with parallel/large-scale demo
 
 echo "==========================================="
 echo "Setting up Pradel-JAX environment..."
@@ -15,22 +15,42 @@ echo "Installing dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Add src/ to PYTHONPATH so imports work
-export PYTHONPATH=$(pwd)/src:$PYTHONPATH
+# Install package in development mode
+pip install -e .
 
-# Run full analysis on 5,000-row dataset using the unified parallel script
+# Run large-scale scalability demonstration
 echo "==========================================="
-echo "Running analysis on full dataset ..."
+echo "Running large-scale scalability demo..."
 echo "==========================================="
 
-python examples/run_analysis.py \
-  --data data/wf.dat.csv \
-  --output results/test_results.csv \
-  --models models/models.csv \
-  --mode parallel \
-  --cores 4 \
-  --gpu
+python examples/benchmarks/large_scale_scalability_demonstration.py
+
+# Run GPU acceleration benchmark if available
+echo "==========================================="
+echo "Testing GPU acceleration (if available)..."
+echo "==========================================="
+
+python examples/benchmarks/gpu_acceleration_benchmark.py || echo "GPU not available - CPU mode only"
+
+# Run comprehensive integration tests
+echo "==========================================="
+echo "Running comprehensive integration tests..."
+echo "==========================================="
+
+python -m pytest tests/integration/ -v --tb=short
 
 echo "==========================================="
-echo "Setup complete! Check results/test_results.csv for output."
+echo "Setup complete! ✅"
+echo "==========================================="
+echo ""
+echo "Performance features demonstrated:"
+echo "1. Large-scale dataset processing"
+echo "2. GPU acceleration (if available)"
+echo "3. Parallel optimization strategies"
+echo "4. Memory-efficient processing"
+echo ""
+echo "Next steps:"
+echo "1. Activate environment: source pradel_env/bin/activate"
+echo "2. Check examples/nebraska/ for real-world analysis"
+echo "3. Run benchmarks with: python -m pytest tests/benchmarks/"
 echo "==========================================="
