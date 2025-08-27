@@ -15,21 +15,29 @@ echo "Installing dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Add src/ to PYTHONPATH so imports work
-export PYTHONPATH=$(pwd)/src:$PYTHONPATH
+# Install package in development mode
+pip install -e .
 
-# Run test analysis on sample data
+# Run statistical inference demo with dipper dataset
 echo "==========================================="
-echo "Running test analysis on subset (5,000 individuals)..."
+echo "Running statistical inference demo..."
 echo "==========================================="
 
-python examples/run_analysis.py \
-  --data data/wf.dat.csv \
-  --output results/test_results.csv \
-  --models data/models.csv \
-  --subset \
-  --cores 4
+python examples/statistical_inference_demo.py
 
 echo "==========================================="
-echo "Setup complete! Check results/test_results.csv for output."
+echo "Running integration test to verify setup..."
+echo "==========================================="
+
+python -m pytest tests/integration/test_optimization_minimal.py -v
+
+echo "==========================================="
+echo "Setup complete! ✅"
+echo "==========================================="
+echo ""
+echo "Next steps:"
+echo "1. Activate environment: source pradel_env/bin/activate"
+echo "2. Try the examples in examples/"
+echo "3. Check docs/ for user guides and tutorials"
+echo "4. Run tests with: python -m pytest tests/"
 echo "==========================================="
