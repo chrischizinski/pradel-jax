@@ -245,6 +245,18 @@ archive/
 # Results directory may contain sensitive analysis outputs
 results/
 
+# Nebraska and South Dakota result files (contain sensitive data)
+*nebraska*results*.csv
+*nebraska*parameters*.csv
+*nebraska*comparison*.csv
+*ne_*results*.csv
+*ne_*parameters*.csv
+*ne_*comparison*.csv
+*south_dakota*.csv
+*sd_*.csv
+temp_*south_dakota*.csv
+temp_*sd*.csv
+
 # Configuration files that might contain credentials
 config.json
 secrets.json
