@@ -1,5 +1,0 @@
-model_name,log_likelihood,aic,n_parameters,strategy_used,success,delta_aic,aic_weight,substantial_support
-phi~1_p~1_f~1,-140.2285919189453,286.4571838378906,3,hybrid_quick_refined,True,0.0,0.5344466453885229,True
-phi~1_p~1_f~1 + gender,-140.2285919189453,288.4571838378906,4,hybrid_quick_refined,True,2.0,0.19661193324148185,True
-phi~1 + gender_p~1_f~1,-140.2285919189453,288.4571838378906,4,hybrid_quick_refined,True,2.0,0.19661193324148185,True
-phi~1 + gender_p~1_f~1 + gender,-140.2285919189453,290.4571838378906,5,hybrid_quick_refined,True,4.0,0.07232948812851327,False
