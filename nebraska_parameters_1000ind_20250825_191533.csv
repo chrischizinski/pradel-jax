@@ -1,5 +1,0 @@
-model_name,aic,n_parameters,delta_aic,aic_weight,substantial_support
-phi~1 + gender_p~1_f~1,17863.859375,4,0.0,0.9999999999953662,True
-phi~1 + gender_p~1_f~1 + gender,17916.0546875,5,52.1953125,4.633742541712493e-12,False
-phi~1_p~1_f~1,18292.94921875,3,429.08984375,6.673048930046586e-94,False
-phi~1_p~1_f~1 + gender,18345.14453125,4,481.28515625,3.092119071022918e-105,False
