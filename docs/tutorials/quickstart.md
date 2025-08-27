@@ -9,6 +9,16 @@ Before starting, make sure you have:
 - The pradel-jax package installed ([Installation Guide](../user-guide/installation.md))
 - Basic familiarity with capture-recapture concepts
 
+**💡 New User?** Run our automated setup:
+```bash
+git clone https://github.com/chrischizinski/pradel-jax.git
+cd pradel-jax
+./quickstart.sh           # Basic setup + demo
+# OR
+./quickstart_parallel.sh  # Performance demo + benchmarks
+source pradel_env/bin/activate
+```
+
 ## 📊 Your First Analysis
 
 ### Step 1: Load Data

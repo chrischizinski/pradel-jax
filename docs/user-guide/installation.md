@@ -4,7 +4,10 @@ Complete installation instructions for all environments and use cases.
 
 ## 🚀 Quick Installation (Recommended)
 
-The fastest way to get Pradel-JAX running:
+Choose the setup that matches your needs:
+
+### Basic Setup (Most Users)
+Perfect for getting started with standard analysis:
 
 ```bash
 # Clone repository and auto-setup (creates virtual environment)
@@ -18,6 +21,32 @@ source pradel_env/bin/activate
 # Verify installation
 python -m pytest tests/integration/test_optimization_minimal.py -v
 ```
+
+### Performance Demo Setup (Advanced Users)
+Includes large-scale demonstrations and GPU benchmarking:
+
+```bash
+# Clone repository and setup with performance demos
+git clone https://github.com/chrischizinski/pradel-jax.git
+cd pradel-jax
+./quickstart_parallel.sh
+
+# Activate environment
+source pradel_env/bin/activate
+
+# Performance features are now demonstrated
+```
+
+**What's included in each quickstart:**
+
+| Feature | `quickstart.sh` | `quickstart_parallel.sh` |
+|---------|----------------|---------------------------|
+| ✅ Basic installation | ✅ | ✅ |
+| ✅ Core functionality demo | ✅ | ✅ |
+| ✅ Integration tests | ✅ | ✅ |
+| ⚡ Large-scale benchmarks | ❌ | ✅ |
+| 🖥️ GPU acceleration demo | ❌ | ✅ |
+| 📊 Performance monitoring | ❌ | ✅ |
 
 ## 📋 System Requirements
 
