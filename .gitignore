@@ -242,6 +242,20 @@ system_analysis_report_*.txt
 # Archive directory contains old code and potentially sensitive data
 archive/
 
+# Testing and experiment directories that shouldn't be on GitHub
+test_checkpoints/
+optimization_experiments/
+checkpoints/
+
+# Testing result files
+tests/benchmarks/results/
+tests/integration/*results*.json
+tests/integration/*results*.txt
+tests/benchmarks/*results*.json
+tests/benchmarks/*results*.csv
+tests/benchmarks/*summary*.csv
+tests/benchmarks/*report*.md
+
 # Results directory may contain sensitive analysis outputs
 results/
 
@@ -284,6 +298,7 @@ credentials.json
 
 # Claude settings (may contain sensitive connection details)
 .claude/
+CLAUDE.md
 
 # =============================================================================
 # ALLOW SPECIFIC SAFE FILES
