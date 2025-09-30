@@ -696,14 +696,26 @@ def optimize_model(
     initial_parameters: np.ndarray,
     context: Union[ModelContext, "DataContext"],
     bounds: Optional[List[tuple]] = None,
-    preferred_strategy: Optional[OptimizationStrategy] = None,
+    preferred_strategy: Optional[Union[OptimizationStrategy, str]] = None,
     **kwargs,
 ) -> OptimizationResponse:
     """
     High-level convenience function for model optimization.
 
     This is the main entry point most users should use.
+
+    Args:
+        preferred_strategy: Either an OptimizationStrategy enum or a string name
+                           (e.g., "scipy_lbfgs", OptimizationStrategy.SCIPY_LBFGS)
     """
+    # Convert string strategy to enum if needed
+    if isinstance(preferred_strategy, str):
+        try:
+            preferred_strategy = OptimizationStrategy(preferred_strategy)
+        except ValueError:
+            logger.warning(f"Unknown strategy '{preferred_strategy}', will use auto-selection")
+            preferred_strategy = None
+
     # Convert DataContext to ModelContext if needed
     if not hasattr(context, "n_parameters"):
         # Create a wrapper that adds n_parameters from initial_parameters

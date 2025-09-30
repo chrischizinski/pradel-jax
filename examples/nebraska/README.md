@@ -80,6 +80,21 @@ PYTHONPATH=. python examples/nebraska/nebraska_sample_analysis.py -n 50000 --par
 | `--chunk-size` | | 10000 | Chunk size for memory-efficient processing |
 | `--help` | `-h` | | Show help message and exit |
 
+### Time‑Varying & Robust Fitting (recommended flags)
+Use assembled time‑varying covariates and robust inference options for large datasets:
+
+```
+python examples/nebraska/nebraska_sample_analysis.py \
+  --dataset south_dakota --sample-size 0 --max-models 64 \
+  --strategy hybrid --parallel --n-workers 8 --batch-size 8 \
+  --prefer-tv-only \
+  --warm-start intercept --penalty ridge --lambda-penalty 1e-4 \
+  --boundary-prior jeffreys --boundary-weight 1e-4 \
+  --robust-se --robust-se-on top --robust-se-top-k 5 \
+  --bootstrap --bootstrap-samples 200 \
+  --firth-refine --firth-steps 2
+```
+
 #### Model Structure
 The script fits all combinations of:
 - **Survival (φ)**: 7 formulas using gender, age, tier covariates

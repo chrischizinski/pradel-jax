@@ -145,7 +145,12 @@ def _fit_model_worker(args):
     Worker function for parallel model fitting.
     Runs in separate process to enable true parallelization.
     """
-    model_spec, data_context_dict, objective_func_name, bounds, strategy = args
+    # Unpack arguments (added worker_options for extended behaviors)
+    if len(args) == 5:
+        model_spec, data_context_dict, objective_func_name, bounds, strategy = args
+        worker_options = {}
+    else:
+        model_spec, data_context_dict, objective_func_name, bounds, strategy, worker_options = args
 
     try:
         # Deserialize data context from dict
@@ -167,12 +172,67 @@ def _fit_model_worker(args):
         )
         initial_params = model.get_initial_parameters(data_context, design_matrices)
 
-        # Define objective function
+        # Penalty options
+        penalty = (worker_options or {}).get("penalty", "none")
+        lambda_penalty = float((worker_options or {}).get("lambda_penalty", 0.0))
+        include_intercept = bool((worker_options or {}).get("penalty_include_intercept", False))
+
+        def _ridge_mask(design_mats):
+            sizes = [
+                design_mats["phi"].parameter_count,
+                design_mats["p"].parameter_count,
+                design_mats["f"].parameter_count,
+            ]
+            mask = np.ones(sum(sizes), dtype=float)
+            if not include_intercept:
+                idx = 0
+                for pname in ["phi", "p", "f"]:
+                    cols = design_mats[pname].column_names
+                    if design_mats[pname].has_intercept:
+                        try:
+                            loc = cols.index("(Intercept)")
+                            mask[idx + loc] = 0.0
+                        except ValueError:
+                            pass
+                    idx += design_mats[pname].parameter_count
+            return mask
+
+        ridge_mask = _ridge_mask(design_matrices)
+
+        # Define objective with optional ridge
         def objective(params):
             try:
                 ll = model.log_likelihood(params, data_context, design_matrices)
-                return -ll if np.isfinite(ll) else 1e10
-            except:
+                nll = -ll if np.isfinite(ll) else 1e10
+                if penalty == "ridge" and lambda_penalty > 0:
+                    pen = lambda_penalty * float(np.sum((np.asarray(params) ** 2) * ridge_mask))
+                    nll = nll + pen
+                # Optional boundary-aware prior (worker_options)
+                bprior = (worker_options or {}).get("boundary_prior", "none")
+                bweight = float((worker_options or {}).get("boundary_weight", 0.0))
+                if bprior != "none" and bweight > 0:
+                    sizes = [
+                        design_matrices["phi"].parameter_count,
+                        design_matrices["p"].parameter_count,
+                        design_matrices["f"].parameter_count,
+                    ]
+                    phi_params = np.asarray(params[:sizes[0]])
+                    p_params = np.asarray(params[sizes[0]:sizes[0]+sizes[1]])
+                    X_phi = np.asarray(design_matrices["phi"].matrix)
+                    X_p = np.asarray(design_matrices["p"].matrix)
+                    eta_phi = X_phi @ phi_params
+                    eta_p = X_p @ p_params
+                    phi_prob = 1.0 / (1.0 + np.exp(-eta_phi))
+                    p_prob = 1.0 / (1.0 + np.exp(-eta_p))
+                    eps = 1e-12
+                    if bprior == "barrier":
+                        prior_term = - (np.log(phi_prob*(1-phi_prob) + eps) + np.log(p_prob*(1-p_prob) + eps)).mean()
+                    else:
+                        prior_term = -0.5 * (np.log(phi_prob + eps) + np.log(1-phi_prob + eps) +
+                                             np.log(p_prob + eps) + np.log(1-p_prob + eps)).mean()
+                    nll = nll + bweight * float(prior_term)
+                return nll
+            except Exception:
                 return 1e10
 
         # Convert strategy string to enum if needed
@@ -184,6 +244,55 @@ def _fit_model_worker(args):
                 strategy_enum = OptimizationStrategy.SCIPY_LBFGS
         else:
             strategy_enum = strategy
+
+        # Optional warm-start from intercept-only
+        warm_start = (worker_options or {}).get("warm_start", "none")
+        warm_start_iter = int((worker_options or {}).get("warm_start_iter", 200))
+        try:
+            if warm_start == "intercept":
+                ispec = pj.create_simple_spec(phi="~1", p="~1", f="~1")
+                dm_i = model.build_design_matrices(ispec, data_context)
+                init_i = model.get_initial_parameters(data_context, dm_i)
+                bnd_i = model.get_parameter_bounds(data_context, dm_i)
+
+                def obj_i(p):
+                    return -model.log_likelihood(p, data_context, dm_i)
+
+                warm_resp = optimize_model(
+                    objective_function=obj_i,
+                    initial_parameters=np.array(init_i),
+                    context=data_context,
+                    bounds=bnd_i,
+                    preferred_strategy=strategy_enum,
+                    config_overrides={"max_iter": warm_start_iter, "tolerance": 1e-6},
+                )
+                if warm_resp.success:
+                    theta_i = np.array(warm_resp.result.x)
+                    start = np.array(initial_params, dtype=float)
+                    idx = 0
+                    if design_matrices["phi"].has_intercept:
+                        try:
+                            loc = design_matrices["phi"].column_names.index("(Intercept)")
+                            start[idx + loc] = theta_i[0]
+                        except ValueError:
+                            pass
+                    idx += design_matrices["phi"].parameter_count
+                    if design_matrices["p"].has_intercept:
+                        try:
+                            loc = design_matrices["p"].column_names.index("(Intercept)")
+                            start[idx + loc] = theta_i[1]
+                        except ValueError:
+                            pass
+                    idx += design_matrices["p"].parameter_count
+                    if design_matrices["f"].has_intercept:
+                        try:
+                            loc = design_matrices["f"].column_names.index("(Intercept)")
+                            start[idx + loc] = theta_i[2]
+                        except ValueError:
+                            pass
+                    initial_params = start
+        except Exception:
+            pass
 
         # Optimize
         result = optimize_model(
@@ -296,6 +405,7 @@ class ParallelOptimizer:
         checkpoint_interval: int = 5,
         checkpoint_name: Optional[str] = None,
         resume: bool = False,
+        worker_options: Optional[Dict[str, Any]] = None,
     ) -> List[ParallelOptimizationResult]:
         """
         Fit multiple models in parallel with checkpointing.
@@ -359,7 +469,14 @@ class ParallelOptimizer:
             # Serialize data context for cross-process communication
             data_context_dict = data_context.to_dict()
             worker_args = [
-                (spec, data_context_dict, "log_likelihood", bounds, strategy)
+                (
+                    spec,
+                    data_context_dict,
+                    "log_likelihood",
+                    bounds,
+                    strategy,
+                    worker_options or {},
+                )
                 for spec in batch_specs
             ]
 

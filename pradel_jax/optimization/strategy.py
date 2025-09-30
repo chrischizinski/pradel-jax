@@ -509,17 +509,17 @@ class StrategySelector:
                 ProblemDifficulty.VERY_DIFFICULT,
             ]:
                 return [
-                    OptimizationStrategy.MINI_BATCH_SGD,
-                    OptimizationStrategy.GPU_ACCELERATED,
-                    OptimizationStrategy.MULTI_START,
+                    OptimizationStrategy.SCIPY_LBFGS,  # Single-start L-BFGS-B works well for most problems
+                    OptimizationStrategy.MULTI_START,  # Multi-start as fallback with fixed starting points
                     OptimizationStrategy.SCIPY_SLSQP,
+                    OptimizationStrategy.MINI_BATCH_SGD,
                 ]
             else:
                 return [
-                    OptimizationStrategy.SCIPY_LBFGS,
-                    OptimizationStrategy.GPU_ACCELERATED,
-                    OptimizationStrategy.MINI_BATCH_SGD,
+                    OptimizationStrategy.SCIPY_LBFGS,  # Prefer single-start for medium-scale datasets
+                    OptimizationStrategy.MULTI_START,  # Multi-start as backup
                     OptimizationStrategy.JAX_ADAM,
+                    OptimizationStrategy.GPU_ACCELERATED,
                 ]
 
         # Standard strategies for smaller datasets (<10k individuals)
@@ -595,25 +595,53 @@ class StrategySelector:
     ) -> OptimizationConfig:
         """Generate optimized configuration for selected strategy."""
 
-        # Base configurations by strategy
+        # Adaptive tolerance based on dataset size to prevent premature convergence
+        # Large datasets require tighter tolerances to avoid local minima
+        # Based on empirical testing showing nested model violations with loose tolerances
+        # Updated thresholds for very large datasets (>100K) after Nebraska analysis
+        n_individuals = characteristics.n_individuals
+        if n_individuals >= 100000:
+            # Ultra-large datasets like Nebraska (117K) need multi-start optimization
+            # Set for multi-start strategy to be selected automatically
+            adaptive_tolerance = 1e-15  # Ultra-tight to force multi-start selection
+            adaptive_max_iter = 5000
+        elif n_individuals >= 50000:
+            adaptive_tolerance = 1e-12  # Very large datasets need very tight tolerance
+            adaptive_max_iter = 3000
+        elif n_individuals >= 15000:
+            adaptive_tolerance = 1e-10  # Large datasets need tight tolerance (lowered threshold)
+            adaptive_max_iter = 2000
+        elif n_individuals >= 10000:
+            adaptive_tolerance = 1e-9   # Medium-large datasets need tighter tolerance
+            adaptive_max_iter = 1500
+        elif n_individuals >= 5000:
+            adaptive_tolerance = 1e-8   # Medium datasets need moderate tolerance
+            adaptive_max_iter = 1000
+        else:
+            adaptive_tolerance = 1e-6   # Small datasets can use looser tolerance
+            adaptive_max_iter = 1000
+
+        # Base configurations by strategy with adaptive tolerance
         base_configs = {
             OptimizationStrategy.SCIPY_LBFGS: OptimizationConfig(
-                max_iter=1000, tolerance=1e-6, init_scale=0.1  # More reasonable tolerance
+                max_iter=adaptive_max_iter, tolerance=adaptive_tolerance, init_scale=0.1
             ),
             OptimizationStrategy.SCIPY_SLSQP: OptimizationConfig(
-                max_iter=1500, tolerance=1e-6, init_scale=0.05  # More reasonable tolerance
+                max_iter=adaptive_max_iter + 500, tolerance=adaptive_tolerance, init_scale=0.05
             ),
             OptimizationStrategy.JAX_ADAM: OptimizationConfig(
-                max_iter=10000, tolerance=1e-2, learning_rate=0.00001, init_scale=0.1
+                max_iter=max(10000, adaptive_max_iter * 5), tolerance=max(1e-2, adaptive_tolerance * 100),
+                learning_rate=0.00001, init_scale=0.1
             ),
             OptimizationStrategy.JAX_ADAM_ADAPTIVE: OptimizationConfig(
-                max_iter=8000, tolerance=1e-6, learning_rate=0.01, init_scale=0.1
+                max_iter=max(8000, adaptive_max_iter * 4), tolerance=adaptive_tolerance,
+                learning_rate=0.01, init_scale=0.1
             ),
             OptimizationStrategy.MULTI_START: OptimizationConfig(
-                max_iter=1000, tolerance=1e-8, init_scale=0.05, verbose=True
+                max_iter=adaptive_max_iter, tolerance=min(1e-8, adaptive_tolerance), init_scale=0.05, verbose=True
             ),
             OptimizationStrategy.HYBRID: OptimizationConfig(
-                max_iter=1000, tolerance=1e-8, init_scale=0.1, verbose=True
+                max_iter=adaptive_max_iter, tolerance=min(1e-8, adaptive_tolerance), init_scale=0.1, verbose=True
             ),
         }
 
@@ -622,13 +650,9 @@ class StrategySelector:
         # Adaptive tuning based on characteristics
         overrides = {}
 
-        # Adjust tolerances for large-scale problems with large gradients
-        if characteristics.n_individuals > 10000:
-            # Large-scale problems often have gradients in the thousands/millions
-            # Need much more relaxed tolerances
-            overrides.update({
-                "tolerance": 1e-4,  # Much more relaxed for large-scale
-            })
+        # REMOVED: Previous logic that set looser tolerance for large datasets was incorrect
+        # Large datasets require TIGHTER tolerances to avoid premature convergence to local minima
+        # The adaptive tolerance above already handles this correctly
         
         # Adjust for ill-conditioning
         if (

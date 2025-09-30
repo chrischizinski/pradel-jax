@@ -46,6 +46,37 @@ def exp_link(x: jnp.ndarray) -> jnp.ndarray:
 
 
 @jax.jit
+def _log_beta_prior(
+    probabilities: jnp.ndarray, alpha: float, beta: float, epsilon: float = 1e-6
+) -> jnp.ndarray:
+    """Log-prior contribution for a Beta(alpha, beta) distribution."""
+    clipped_probs = jnp.clip(probabilities, epsilon, 1.0 - epsilon)
+    return jnp.sum(
+        (alpha - 1.0) * jnp.log(clipped_probs)
+        + (beta - 1.0) * jnp.log1p(-clipped_probs)
+    )
+
+
+@jax.jit
+def _log_lognormal_prior(
+    values: jnp.ndarray,
+    mode: float,
+    sigma: float,
+    epsilon: float = 1e-12,
+) -> jnp.ndarray:
+    """Log-prior contribution for a log-normal distribution parameterised by its mode."""
+    clipped = jnp.clip(values, epsilon, jnp.inf)
+    log_values = jnp.log(clipped)
+
+    mu = jnp.log(mode) + sigma**2
+    log_norm_const = jnp.log(sigma) + 0.5 * jnp.log(2.0 * jnp.pi)
+
+    return jnp.sum(
+        -0.5 * ((log_values - mu) / sigma) ** 2 - log_values - log_norm_const
+    )
+
+
+@jax.jit
 def calculate_seniority_gamma(phi: float, f: float) -> float:
     """
     Calculate seniority probability γ from Pradel (1996).
@@ -267,9 +298,24 @@ class PradelModel(CaptureRecaptureModel):
     Uses logit link for φ and p (bounded 0-1), log link for f (positive).
     """
 
-    def __init__(self, model_type: ModelType = ModelType.PRADEL):
+    def __init__(
+        self,
+        model_type: ModelType = ModelType.PRADEL,
+        boundary_prior_strength: float = 0.75,
+        boundary_prior_alpha: float = 2.0,
+        boundary_prior_beta: float = 2.0,
+        recruitment_prior_strength: float = 0.5,
+        recruitment_prior_mode: float = 0.05,
+        recruitment_prior_sigma: float = 0.75,
+    ):
         super().__init__(model_type)
         self.parameter_order = ["phi", "p", "f"]
+        self.boundary_prior_strength = float(boundary_prior_strength)
+        self.boundary_prior_alpha = float(boundary_prior_alpha)
+        self.boundary_prior_beta = float(boundary_prior_beta)
+        self.recruitment_prior_strength = float(recruitment_prior_strength)
+        self.recruitment_prior_mode = float(recruitment_prior_mode)
+        self.recruitment_prior_sigma = float(recruitment_prior_sigma)
 
     def build_design_matrices(
         self, formula_spec: FormulaSpec, data_context: DataContext
@@ -312,8 +358,7 @@ class PradelModel(CaptureRecaptureModel):
         """
         Get parameter bounds for optimization.
 
-        FIXED: Use biologically reasonable bounds instead of overly restrictive ones.
-        The original bounds [-10, 10] were causing optimization to hit boundaries.
+        FIXED: Use biologically reasonable bounds together with a soft boundary prior.
         """
         bounds = []
 
@@ -323,14 +368,12 @@ class PradelModel(CaptureRecaptureModel):
 
             if param_name in ["phi", "p"]:
                 # Logit-scale bounds for survival/detection probabilities
-                # Allow probabilities from 0.0001 to 0.9999 (more precision, still stable)
-                # logit(0.0001) ≈ -9.210, logit(0.9999) ≈ 9.210
-                param_bounds = [(logit(0.0001), logit(0.9999))] * n_params
+                # Allow probabilities from 0.001 to 0.999 to avoid extreme logits
+                param_bounds = [(logit(0.001), logit(0.999))] * n_params
             elif param_name == "f":
                 # Log-scale bounds for recruitment rate
-                # Allow recruitment from 0.00001 to 10.0 (wider range for population dynamics)
-                # log(0.00001) ≈ -11.513, log(10.0) ≈ 2.303
-                param_bounds = [(log_link(0.00001), log_link(10.0))] * n_params
+                # Allow recruitment from 1e-8 to 10.0 (wide range while avoiding underflow)
+                param_bounds = [(log_link(1e-8), log_link(10.0))] * n_params
             else:
                 # Default bounds (should not occur for Pradel model)
                 param_bounds = [(-5.0, 5.0)] * n_params
@@ -521,7 +564,22 @@ class PradelModel(CaptureRecaptureModel):
         n_individuals, n_occasions = capture_matrix.shape
 
         # OPTIMIZED: Use JIT-compiled vectorized likelihood calculation
-        return _pradel_vectorized_likelihood(phi, p, f, capture_matrix)
+        base_likelihood = _pradel_vectorized_likelihood(phi, p, f, capture_matrix)
+
+        # Apply a soft Beta prior to keep probabilities away from the boundaries.
+        if self.boundary_prior_strength > 0.0:
+            beta_prior = (
+                _log_beta_prior(phi, self.boundary_prior_alpha, self.boundary_prior_beta)
+                + _log_beta_prior(p, self.boundary_prior_alpha, self.boundary_prior_beta)
+            )
+            base_likelihood += self.boundary_prior_strength * beta_prior
+
+        if self.recruitment_prior_strength > 0.0:
+            base_likelihood += self.recruitment_prior_strength * _log_lognormal_prior(
+                f, self.recruitment_prior_mode, self.recruitment_prior_sigma
+            )
+
+        return base_likelihood
 
     def validate_data(self, data_context: DataContext) -> None:
         """Validate data for Pradel model."""

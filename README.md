@@ -97,10 +97,23 @@ Standard Errors: {'phi_intercept': 0.097, 'phi_sex': 0.142, ...}
 
 **Quick Links:**
 - [Installation Instructions](docs/user-guide/installation.md)
+- [Fitting Options & Robust Inference](docs/user-guide/fitting-options.md)
 - [Your First Model Tutorial](docs/tutorials/quickstart.md)
 - [RMark Integration Guide](docs/tutorials/rmark-integration.md)
 - [Performance Optimization](docs/user-guide/performance.md)
 - [Troubleshooting Common Issues](docs/user-guide/troubleshooting.md)
+
+## 🧰 Convenience Runners
+
+Run full analyses with recommended options:
+
+```
+# Nebraska
+python examples/run_ne_full.py
+
+# South Dakota (time‑varying only)
+python examples/run_sd_full.py
+```
 
 ## 🚀 Features
 
@@ -157,11 +170,31 @@ Standard Errors: {'phi_intercept': 0.097, 'phi_sex': 0.142, ...}
 
 - **🕐 Time-Varying Covariate Support (Aug 26, 2025)**: Complete implementation and validation ✅
   - **User Requirement**: "Both tier and age are time-varying in our modeling" - **FULLY MET**
-  - **Age Time-Varying**: Detected `age_2016` through `age_2024` (9 occasions) with proper temporal progression
-  - **Tier Time-Varying**: Detected `tier_2016` through `tier_2024` (9 occasions) with realistic transitions
+  - **Age Time-Varying (numeric)**: Automatically assembles `age_2016`… to a 2D `age` matrix and expands to per‑occasion columns (`age_t0..`)
+  - **Tier Time-Varying (categorical)**: Automatically assembles `tier_2016`… to a 2D `tier` matrix and expands to per‑occasion dummies (dropped reference)
   - **Data Structure**: Preserved as `(n_individuals, n_occasions)` matrices maintaining temporal relationships
   - **Validation**: 100% success across Nebraska (111k) and South Dakota (96k) datasets
   - **Statistical Validation**: All parameter estimates biologically reasonable (φ=0.50-0.56, p=0.27-0.31)
+
+- **🔒 Boundary‑Aware Fitting & Robust Inference (Sep 2025)**: New CLI options ✅
+  - Mild priors to reduce φ/p boundary pile‑ups: `--boundary-prior {jeffreys,barrier}` with `--boundary-weight`
+  - Firth refinement for logistic terms on the best model: `--firth-refine --firth-steps`
+  - Robust SEs (SVD) and bootstrap CIs for the best model(s): `--robust-se` and `--bootstrap`
+  - Warm‑start and ridge for stability: `--warm-start intercept --penalty ridge --lambda-penalty`
+
+### 🧪 Example: Time‑Varying + Robust Fitting
+
+```
+python examples/nebraska/nebraska_sample_analysis.py \
+  --dataset south_dakota --sample-size 0 --max-models 64 \
+  --strategy hybrid --parallel --n-workers 8 --batch-size 8 \
+  --prefer-tv-only \
+  --warm-start intercept --penalty ridge --lambda-penalty 1e-4 \
+  --boundary-prior jeffreys --boundary-weight 1e-4 \
+  --robust-se --robust-se-on top --robust-se-top-k 5 \
+  --bootstrap --bootstrap-samples 200 \
+  --firth-refine --firth-steps 2
+```
 
 - **🔧 Critical JAX Compatibility Fix (Aug 26, 2025)**: Resolved immutable array errors ✅
   - **Problem**: 5+ locations using in-place array assignments incompatible with JAX
@@ -513,6 +546,20 @@ The v2.0 redesign introduces breaking changes for better long-term maintainabili
 - **Configuration System**: Settings now managed through `PradelJaxConfig`
 - **Data Loading**: `pj.load_data()` instead of `DataHandler`
 - **Error Handling**: Rich exceptions instead of simple errors
+
+## 🧹 Repository Maintenance
+
+**Cleanup Utility Available**: Use `cleanup_repository.py` to maintain a clean workspace:
+
+```bash
+# Preview what would be cleaned
+python cleanup_repository.py
+
+# Execute cleanup (moves files to archive/)
+python cleanup_repository.py --execute
+```
+
+This script identifies and archives temporary debug/investigation files while preserving all essential project components. All moved items are safely preserved in the `archive/` directory for recovery if needed.
 
 ## 🤝 Contributing
 

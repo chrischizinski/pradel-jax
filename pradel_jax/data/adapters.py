@@ -202,6 +202,41 @@ class DataFormatAdapter(ABC):
         covariates_jax = {}
         metadata = {"adapter": self.__class__.__name__}
 
+        # Assemble time-varying matrices for sequences like age_2016.. and tier_2016..
+        def _collect_series(prefix: str):
+            series = [(col, int(col.split('_',1)[1])) for col in covariates.keys() if col.startswith(prefix + '_') and col.split('_',1)[1].isdigit()]
+            series.sort(key=lambda x: x[1])
+            return [c for c,_ in series]
+
+        # Build age time-varying if available
+        age_series = _collect_series('age')
+        if age_series:
+            try:
+                age_matrix = np.column_stack([covariates[col] for col in age_series]).astype(np.float32)
+                covariates['age'] = age_matrix
+                covariates['age_is_time_varying'] = True
+                metadata['age_time_occasions'] = age_series
+            except Exception as ee:
+                logger.warning(f"Failed to assemble time-varying age: {ee}")
+
+        # Build tier time-varying if available
+        tier_series = _collect_series('tier')
+        if tier_series:
+            try:
+                tier_matrix = np.column_stack([covariates[col] for col in tier_series]).astype(np.float32)
+                covariates['tier'] = tier_matrix
+                covariates['tier_is_time_varying'] = True
+                # Mark as categorical and provide categories from unique codes
+                codes = tier_matrix[~np.isnan(tier_matrix)].astype(int)
+                unique_codes = np.unique(codes)
+                # Build category labels as strings of codes
+                categories = [str(int(c)) for c in unique_codes]
+                covariates['tier_is_categorical'] = True
+                covariates['tier_categories'] = categories
+                metadata['tier_time_occasions'] = tier_series
+            except Exception as ee:
+                logger.warning(f"Failed to assemble time-varying tier: {ee}")
+
         for name, array in covariates.items():
             # CRITICAL FIX: Separate numeric covariates from categorical metadata
             if name.endswith("_categories"):
@@ -537,6 +572,44 @@ class GenericFormatAdapter(DataFormatAdapter):
                 covariate_info[col] = CovariateInfo(
                     name=col, dtype=str(data[col].dtype), is_categorical=False
                 )
+
+        # Detect time-varying sequences (e.g., age_2016..)
+        def _collect_series(prefix: str) -> Tuple[list, list]:
+            cols = []
+            years = []
+            for col in data.columns:
+                if col.startswith(prefix + "_"):
+                    suf = col.split("_", 1)[1]
+                    if suf.isdigit():
+                        years.append(int(suf))
+                        cols.append(col)
+            pairs = sorted(zip(years, cols))
+            if not pairs:
+                return [], []
+            yrs_sorted, cols_sorted = zip(*pairs)
+            return list(cols_sorted), list(yrs_sorted)
+
+        age_cols, age_years = _collect_series("age")
+        if age_cols:
+            covariate_info["age"] = CovariateInfo(
+                name="age",
+                dtype="time_varying_numeric",
+                is_time_varying=True,
+                is_categorical=False,
+                levels=None,
+                time_occasions=[str(y) for y in age_years],
+            )
+
+        tier_cols, tier_years = _collect_series("tier")
+        if tier_cols:
+            covariate_info["tier"] = CovariateInfo(
+                name="tier",
+                dtype="time_varying_categorical",
+                is_time_varying=True,
+                is_categorical=True,
+                levels=None,
+                time_occasions=[str(y) for y in tier_years],
+            )
 
         return covariate_info
 

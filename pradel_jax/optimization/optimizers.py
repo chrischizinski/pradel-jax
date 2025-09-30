@@ -57,6 +57,15 @@ except ImportError:
     HAS_OPTUNA = False
 
 from .strategy import OptimizationConfig, OptimizationStrategy
+try:
+    # Finite-difference utilities for robust Hessian estimation
+    from .hessian_utils import (
+        compute_finite_difference_hessian_full,
+        validate_hessian_quality,
+    )
+except Exception:  # pragma: no cover
+    compute_finite_difference_hessian_full = None
+    validate_hessian_quality = None
 
 logger = logging.getLogger(__name__)
 
@@ -103,69 +112,68 @@ class OptimizationResult:
     @property
     def standard_errors(self) -> Optional[np.ndarray]:
         """Standard errors computed from Hessian inverse."""
-        if self.hess_inv is None:
-            return None
-
-        try:
-            # Handle different Hessian formats
-            if isinstance(self.hess_inv, np.ndarray):
-                if len(self.hess_inv.shape) == 2:
-                    # Full Hessian inverse matrix
-                    diagonal = np.diag(self.hess_inv)
-                    # Standard errors are sqrt of diagonal elements
-                    se = np.sqrt(np.maximum(diagonal, 0))  # Prevent sqrt of negative
-                    return se
-                elif len(self.hess_inv.shape) == 1:
-                    # Diagonal approximation
-                    return np.sqrt(np.maximum(self.hess_inv, 0))
-            else:
-                # Handle scipy LbfgsInvHessProduct or similar objects
-                try:
-                    # Get the shape
-                    n = self.hess_inv.shape[0]
-
-                    # Extract diagonal elements by multiplying with unit vectors (JAX-compatible)
-                    diagonal_elements = []
-                    for i in range(n):
-                        unit_vector = np.zeros(n)
-                        unit_vector = unit_vector.at[i].set(1.0) if hasattr(unit_vector, 'at') else np.array([1.0 if j == i else 0.0 for j in range(n)])
-                        # Diagonal element is e_i^T * H^{-1} * e_i
-                        diag_elem = unit_vector @ (self.hess_inv @ unit_vector)
-                        diagonal_elements.append(diag_elem)
-                    diagonal = np.array(diagonal_elements)
-
-                    se = np.sqrt(
-                        np.maximum(diagonal, 1e-12)
-                    )  # Small minimum to prevent 0
-
-                    # Check if this looks like a meaningful result (not unit approximation)
-                    if not np.allclose(se, 1.0, rtol=1e-6):
+        # Try direct use of provided Hessian inverse (if available)
+        if self.hess_inv is not None:
+            try:
+                # Handle different Hessian formats
+                if isinstance(self.hess_inv, np.ndarray):
+                    if len(self.hess_inv.shape) == 2:
+                        # Full Hessian inverse matrix
+                        diagonal = np.diag(self.hess_inv)
+                        # Standard errors are sqrt of diagonal elements
+                        se = np.sqrt(np.maximum(diagonal, 0))  # Prevent sqrt of negative
                         return se
-                    # If all values are ~1.0, continue to fallback methods
-
-                except Exception as e:
-                    # Last resort: try converting to dense matrix
+                    elif len(self.hess_inv.shape) == 1:
+                        # Diagonal approximation
+                        return np.sqrt(np.maximum(self.hess_inv, 0))
+                else:
+                    # Handle scipy LbfgsInvHessProduct or similar objects
                     try:
+                        # Get the shape
                         n = self.hess_inv.shape[0]
-                        hess_inv_columns = []
+
+                        # Extract diagonal elements by multiplying with unit vectors (JAX-compatible)
+                        diagonal_elements = []
                         for i in range(n):
-                            unit_vector = np.array([1.0 if j == i else 0.0 for j in range(n)])
-                            column = self.hess_inv @ unit_vector
-                            hess_inv_columns.append(column)
-                        hess_inv_dense = np.column_stack(hess_inv_columns)
+                            unit_vector = np.zeros(n)
+                            unit_vector = unit_vector.at[i].set(1.0) if hasattr(unit_vector, 'at') else np.array([1.0 if j == i else 0.0 for j in range(n)])
+                            # Diagonal element is e_i^T * H^{-1} * e_i
+                            diag_elem = unit_vector @ (self.hess_inv @ unit_vector)
+                            diagonal_elements.append(diag_elem)
+                        diagonal = np.array(diagonal_elements)
 
-                        diagonal = np.diag(hess_inv_dense)
-                        se = np.sqrt(np.maximum(diagonal, 1e-12))
+                        se = np.sqrt(
+                            np.maximum(diagonal, 1e-12)
+                        )  # Small minimum to prevent 0
 
-                        # Check if this looks meaningful
+                        # Check if this looks like a meaningful result (not unit approximation)
                         if not np.allclose(se, 1.0, rtol=1e-6):
                             return se
-                        # If unit approximation, continue to fallback
-                    except Exception:
-                        pass
-        except Exception:
-            # Fallback if computation fails
-            pass
+                        # If all values are ~1.0, continue to fallback methods
+
+                    except Exception as e:
+                        # Last resort: try converting to dense matrix
+                        try:
+                            n = self.hess_inv.shape[0]
+                            hess_inv_columns = []
+                            for i in range(n):
+                                unit_vector = np.array([1.0 if j == i else 0.0 for j in range(n)])
+                                column = self.hess_inv @ unit_vector
+                                hess_inv_columns.append(column)
+                            hess_inv_dense = np.column_stack(hess_inv_columns)
+
+                            diagonal = np.diag(hess_inv_dense)
+                            se = np.sqrt(np.maximum(diagonal, 1e-12))
+
+                            # Check if this looks meaningful
+                            if not np.allclose(se, 1.0, rtol=1e-6):
+                                return se
+                            # If unit approximation, continue to fallback
+                        except Exception:
+                            pass
+            except Exception:
+                # Fallback if computation fails
+                pass
 
         # Final fallback: finite difference Hessian if objective function available
         if self._objective_function is not None and self.x is not None:
@@ -180,12 +188,38 @@ class OptimizationResult:
 
                 # First check if we should trust the existing Hessian
                 if self.hess_inv is not None:
-                    quality = validate_hessian_quality(self.hess_inv)
+                    quality = (
+                        validate_hessian_quality(self.hess_inv)
+                        if validate_hessian_quality is not None
+                        else {"meaningful": False, "issues": ["validation_unavailable"]}
+                    )
                     if not quality["meaningful"]:
                         # Use finite difference fallback
                         logger.info(
                             f"Using finite difference fallback for standard errors: {quality['issues']}"
                         )
+                        # Try robust full Hessian with SVD-based inversion first
+                        se = None
+                        if compute_finite_difference_hessian_full is not None:
+                            try:
+                                H = compute_finite_difference_hessian_full(
+                                    self._objective_function, self.x, eps=1e-5
+                                )
+                                # SVD-based stable inversion with damping
+                                U, s, Vt = np.linalg.svd(H, full_matrices=False)
+                                # Condition-aware floor for small singular values
+                                floor = max(1e-12, s[0] * 1e-12)
+                                s_reg = np.maximum(s, floor)
+                                H_inv = (Vt.T * (1.0 / s_reg)) @ U.T
+                                diag = np.diag(H_inv)
+                                diag = np.maximum(diag, 1e-12)
+                                se = np.sqrt(diag)
+                                return se
+                            except Exception as ee:
+                                logger.warning(
+                                    f"SVD-based Hessian inversion failed: {ee}; falling back to diagonal FD"
+                                )
+                        # Diagonal fallback as last resort
                         return compute_fallback_standard_errors(
                             self._objective_function, self.x
                         )
@@ -194,6 +228,23 @@ class OptimizationResult:
                     logger.info(
                         "No Hessian available, using finite difference for standard errors"
                     )
+                    # Prefer robust full Hessian with SVD inversion
+                    if compute_finite_difference_hessian_full is not None:
+                        try:
+                            H = compute_finite_difference_hessian_full(
+                                self._objective_function, self.x, eps=1e-5
+                            )
+                            U, s, Vt = np.linalg.svd(H, full_matrices=False)
+                            floor = max(1e-12, s[0] * 1e-12)
+                            s_reg = np.maximum(s, floor)
+                            H_inv = (Vt.T * (1.0 / s_reg)) @ U.T
+                            diag = np.diag(H_inv)
+                            diag = np.maximum(diag, 1e-12)
+                            return np.sqrt(diag)
+                        except Exception as ee:
+                            logger.warning(
+                                f"Robust full-Hessian SE failed: {ee}; using diagonal FD fallback"
+                            )
                     return compute_fallback_standard_errors(
                         self._objective_function, self.x
                     )
@@ -363,7 +414,7 @@ class ScipyLBFGSOptimizer(BaseOptimizer):
         else:
             objective_np = objective
 
-        # Handle gradient
+        # Handle gradient - always use JAX auto-differentiation for better accuracy
         jac = None
         if gradient is not None:
             if hasattr(gradient, "__call__") and "jax" in str(gradient.__module__):
@@ -371,7 +422,38 @@ class ScipyLBFGSOptimizer(BaseOptimizer):
             else:
                 jac = gradient
         else:
-            jac = "2-point"  # SciPy finite differences
+            # Auto-compute JAX gradient if objective is JAX-compatible
+            import jax
+            import jax.numpy as jnp
+            if hasattr(objective, "__call__"):
+                try:
+                    # Test if objective is JAX-differentiable by computing a test gradient
+                    test_params = jnp.array(x0)
+                    grad_fn = jax.grad(objective)
+                    test_grad = grad_fn(test_params)
+                    grad_norm = float(jnp.linalg.norm(test_grad))
+
+                    # Wrap for scipy compatibility
+                    jac = lambda x: np.array(grad_fn(jnp.array(x)))
+
+                    logger.info(f"L-BFGS-B: Using JAX auto-differentiation for gradients "
+                               f"(test gradient norm: {grad_norm:.6f})")
+
+                    # Check if gradient seems reasonable
+                    if grad_norm < 1e-12:
+                        logger.warning(f"L-BFGS-B: Gradient norm very small ({grad_norm:.2e}), "
+                                     f"may indicate flat objective function")
+                    elif grad_norm > 1e6:
+                        logger.warning(f"L-BFGS-B: Gradient norm very large ({grad_norm:.2e}), "
+                                     f"may indicate numerical issues")
+
+                except Exception as e:
+                    logger.warning(f"L-BFGS-B: JAX gradient computation failed: {e}, "
+                                 f"falling back to finite differences")
+                    jac = "2-point"
+            else:
+                logger.info("L-BFGS-B: Using finite differences for gradients (non-callable objective)")
+                jac = "2-point"
 
         # Set up options following SciPy conventions
         options = {
@@ -458,7 +540,7 @@ class ScipySLSQPOptimizer(BaseOptimizer):
             if "jax" in str(objective.__module__):
                 objective_np = lambda x: float(objective(x))
 
-        # Handle gradient
+        # Handle gradient - always use JAX auto-differentiation for better accuracy
         jac = None
         if gradient is not None:
             if hasattr(gradient, "__call__") and "jax" in str(gradient.__module__):
@@ -466,7 +548,38 @@ class ScipySLSQPOptimizer(BaseOptimizer):
             else:
                 jac = gradient
         else:
-            jac = "2-point"
+            # Auto-compute JAX gradient if objective is JAX-compatible
+            import jax
+            import jax.numpy as jnp
+            if hasattr(objective, "__call__"):
+                try:
+                    # Test if objective is JAX-differentiable by computing a test gradient
+                    test_params = jnp.array(x0)
+                    grad_fn = jax.grad(objective)
+                    test_grad = grad_fn(test_params)
+                    grad_norm = float(jnp.linalg.norm(test_grad))
+
+                    # Wrap for scipy compatibility
+                    jac = lambda x: np.array(grad_fn(jnp.array(x)))
+
+                    logger.info(f"SLSQP: Using JAX auto-differentiation for gradients "
+                               f"(test gradient norm: {grad_norm:.6f})")
+
+                    # Check if gradient seems reasonable
+                    if grad_norm < 1e-12:
+                        logger.warning(f"SLSQP: Gradient norm very small ({grad_norm:.2e}), "
+                                     f"may indicate flat objective function")
+                    elif grad_norm > 1e6:
+                        logger.warning(f"SLSQP: Gradient norm very large ({grad_norm:.2e}), "
+                                     f"may indicate numerical issues")
+
+                except Exception as e:
+                    logger.warning(f"SLSQP: JAX gradient computation failed: {e}, "
+                                 f"falling back to finite differences")
+                    jac = "2-point"
+            else:
+                logger.info("SLSQP: Using finite differences for gradients (non-callable objective)")
+                jac = "2-point"
 
         # SLSQP options
         options = {
@@ -867,18 +980,47 @@ class MultiStartOptimizer(BaseOptimizer):
     def _generate_starting_points(
         self, x0: np.ndarray, bounds: Optional[List[Tuple[float, float]]]
     ) -> List[np.ndarray]:
-        """Generate diverse starting points."""
+        """
+        Generate diverse but sensible starting points for Pradel models.
+
+        For capture-recapture models, parameters are typically on logit scale.
+        Instead of uniformly sampling across entire bounds (which creates extreme values),
+        we sample around reasonable values corresponding to moderate probabilities.
+        """
         points = [x0]  # Always include original starting point
 
         rng = np.random.RandomState(42)  # Reproducible
 
         for _ in range(self.n_starts - 1):
             if bounds is not None:
-                # Sample uniformly within bounds
-                point = np.array([rng.uniform(low, high) for low, high in bounds])
+                # Smart sampling strategy for logit-scale parameters
+                point = []
+                for low, high in bounds:
+                    # Check if this looks like logit-scale bounds (wide symmetric range)
+                    if abs(low) > 3 and abs(high) > 3 and low < 0 < high:
+                        # This looks like logit-scale bounds [-6, +6] or similar
+                        # Sample around center (0) with moderate spread rather than uniformly
+                        # This corresponds to probabilities around 0.5 rather than extremes
+                        center = 0.0
+                        spread = min(1.5, (high - low) / 6)  # Reasonable spread, not too wide
+                        value = rng.normal(center, spread)
+                        # Ensure within bounds
+                        value = np.clip(value, low, high)
+                    else:
+                        # For non-logit bounds, still avoid extremes
+                        # Sample from middle 80% of the range rather than full range
+                        mid = (low + high) / 2
+                        range_80pct = (high - low) * 0.4  # 80% of range = ±40% from center
+                        value = rng.uniform(mid - range_80pct, mid + range_80pct)
+                        # Ensure within bounds
+                        value = np.clip(value, low, high)
+
+                    point.append(value)
+
+                point = np.array(point)
             else:
-                # Sample around original point
-                noise_scale = np.std(x0) if np.std(x0) > 0 else 1.0
+                # Sample around original point with moderate noise
+                noise_scale = min(np.std(x0) if np.std(x0) > 0 else 1.0, 1.0)
                 point = x0 + rng.normal(0, noise_scale, size=x0.shape)
 
             points.append(point)

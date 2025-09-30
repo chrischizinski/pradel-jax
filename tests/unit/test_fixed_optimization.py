@@ -99,21 +99,21 @@ def test_fixed_optimization():
     
     print(f"\nOptimization result:")
     print(f"  Success: {result.success}")
-    print(f"  Strategy used: {result.strategy}")
-    print(f"  Iterations: {result.iterations}")
-    print(f"  Function evaluations: {result.function_evaluations}")
-    print(f"  Final objective: {result.objective:.6f}")
-    print(f"  Final log-likelihood: {-result.objective:.6f}")
-    
-    if result.success and result.parameters is not None:
-        phi_final = inv_logit(result.parameters[0])
-        p_final = inv_logit(result.parameters[1])
-        f_final = exp_link(result.parameters[2])
+    print(f"  Strategy used: {result.strategy_used}")
+    print(f"  Iterations: {getattr(result.result, 'nit', 'N/A') if result.success else 'N/A'}")
+    print(f"  Function evaluations: {getattr(result.result, 'nfev', 'N/A') if result.success else 'N/A'}")
+    print(f"  Final objective: {getattr(result.result, 'fun', float('nan')) if result.success else float('nan'):.6f}")
+    print(f"  Final log-likelihood: {-getattr(result.result, 'fun', float('nan')) if result.success else float('nan'):.6f}")
+
+    if result.success and hasattr(result.result, 'x') and result.result.x is not None:
+        phi_final = inv_logit(result.result.x[0])
+        p_final = inv_logit(result.result.x[1])
+        f_final = exp_link(result.result.x[2])
         print(f"  Final parameters (natural): phi={phi_final:.4f}, p={p_final:.4f}, f={f_final:.4f}")
-        
+
         # Calculate AIC
-        n_params = len(result.parameters)
-        aic = 2 * n_params - 2 * (-result.objective)
+        n_params = len(result.result.x)
+        aic = 2 * n_params - 2 * (-result.result.fun)
         print(f"  AIC: {aic:.2f}")
     
     return result

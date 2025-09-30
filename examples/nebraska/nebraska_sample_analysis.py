@@ -23,21 +23,44 @@ from pathlib import Path
 from itertools import combinations
 import multiprocessing as mp
 
+# Optional bootstrap (best model)
+try:
+    from pradel_jax.inference.uncertainty import bootstrap_confidence_intervals
+except Exception:
+    bootstrap_confidence_intervals = None
+
+# Strategy enum
+from pradel_jax.optimization.strategy import OptimizationStrategy, OptimizationConfig
+from pradel_jax.optimization.optimizers import create_optimizer
+
+# Import our data loaders
+sys.path.append('/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+from nebraska_data_loader import load_and_prepare_nebraska_data
+from south_dakota_data_loader import load_and_prepare_south_dakota_data
+
 # Dataset configurations
 DATASET_CONFIGS = {
     'nebraska': {
-        'file': 'data/encounter_histories_ne_clean.csv',
+        'file': 'data/20250904_ne_hip_tier_data.csv',
         'name': 'Nebraska',
         'abbrev': 'NE',
-        'covariates': ['gender', 'age', 'tier'],
-        'age_column': 'age',  # Standardized age column
+        'loader_func': load_and_prepare_nebraska_data,
+        'covariates': ['gender', 'age_baseline'],  # Individual-level covariates
+        'time_varying': {
+            'age': [f'age_t{i}' for i in range(9)],   # Time-varying age
+            'tier': [f'tier_t{i}' for i in range(9)]  # Time-varying tier
+        }
     },
     'south_dakota': {
-        'file': 'data/encounter_histories_sd_clean.csv', 
+        'file': 'data/20250903_sd_hip_tier_data.csv',
         'name': 'South Dakota',
         'abbrev': 'SD',
-        'covariates': ['gender', 'tier', 'age_2020'],
-        'age_column': 'age_2020',  # Use 2020 age as proxy
+        'loader_func': load_and_prepare_south_dakota_data,
+        'covariates': ['gender', 'age_baseline'],  # Individual-level covariates
+        'time_varying': {
+            'age': [f'age_t{i}' for i in range(9)],   # Time-varying age
+            'tier': [f'tier_t{i}' for i in range(9)]  # Time-varying tier
+        }
     }
 }
 
@@ -61,24 +84,41 @@ def get_available_datasets():
             available.append((dataset_key, config))
     return available
 
-def generate_formula_combinations(covariates):
-    """Generate all possible combinations of covariates for model formulas."""
+def generate_formula_combinations(dataset_config, include_time_varying=True, max_time_varying=3):
+    """Generate all possible combinations of covariates for model formulas including time-varying."""
     formulas = ["~1"]  # Always include intercept-only
-    
-    # Single covariate effects
-    for cov in covariates:
+
+    # Individual-level covariates
+    individual_covs = dataset_config['covariates']
+
+    # Single individual covariate effects
+    for cov in individual_covs:
         formulas.append(f"~1 + {cov}")
-    
-    # Two-way additive combinations
-    for cov_pair in combinations(covariates, 2):
+
+    # Two-way combinations of individual covariates
+    for cov_pair in combinations(individual_covs, 2):
         formulas.append(f"~1 + {' + '.join(cov_pair)}")
-    
-    # Three-way additive combinations (if not too many)
-    if len(covariates) <= 5:  # Limit to avoid overparameterization
-        for cov_triple in combinations(covariates, 3):
-            formulas.append(f"~1 + {' + '.join(cov_triple)}")
-    
-    return formulas
+
+    if include_time_varying:
+        # Time-varying covariates (select representative time points to avoid explosion)
+        time_varying = dataset_config['time_varying']
+
+        # Select key time points for analysis (start, middle, end)
+        key_time_points = [0, 4, 8]  # t0, t4, t8
+
+        for var_type, var_list in time_varying.items():
+            # Single time-varying effects at key time points
+            for t in key_time_points[:max_time_varying]:
+                if t < len(var_list):
+                    tv_var = var_list[t]
+                    formulas.append(f"~1 + {tv_var}")
+
+                    # Combined with individual covariates
+                    for ind_cov in individual_covs[:1]:  # Limit to first individual covariate
+                        formulas.append(f"~1 + {ind_cov} + {tv_var}")
+
+    # Remove duplicates and return
+    return list(set(formulas))
 
 def main():
     """Run comprehensive Pradel model analysis on capture-recapture data."""
@@ -98,7 +138,80 @@ def main():
                        help='Chunk size for memory-efficient processing (default: 10000)')
     parser.add_argument('--list-datasets', action='store_true',
                        help='List available datasets and exit')
+
+    # Optimization controls
+    parser.add_argument(
+        '--strategy', type=str, default=None,
+        choices=['scipy_lbfgs', 'scipy_slsqp', 'jax_adam', 'hybrid', 'multi_start'],
+        help='Optimization strategy to use (default: auto)'
+    )
+    parser.add_argument('--max-iter', type=int, default=1000,
+                        help='Maximum number of iterations for optimizer (default: 1000)')
+    parser.add_argument('--tolerance', type=float, default=1e-6,
+                        help='Convergence tolerance (default: 1e-6)')
+    parser.add_argument('--multi-start-attempts', type=int, default=5,
+                        help='Number of starts for multi_start strategy (default: 5)')
+
+    # Penalty and warm-start options
+    parser.add_argument('--penalty', type=str, default='none', choices=['none', 'ridge', 'firth'],
+                        help='Apply penalty to stabilize estimation (ridge supported; firth placeholder)')
+    parser.add_argument('--lambda-penalty', type=float, default=1e-4,
+                        help='Penalty strength for ridge (default: 1e-4)')
+    parser.add_argument('--penalty-include-intercept', action='store_true',
+                        help='Include intercept terms in ridge penalty (default: exclude)')
+    parser.add_argument('--warm-start', type=str, default='intercept', choices=['none', 'intercept'],
+                        help='Warm-start strategy for target models (default: intercept)')
+    parser.add_argument('--warm-start-iter', type=int, default=300,
+                        help='Max iterations for warm-start intercept fit (default: 300)')
+
+    # Boundary behavior priors (to reduce piling up at 0/1 for probabilities)
+    parser.add_argument('--boundary-prior', type=str, default='none', choices=['none','jeffreys','barrier'],
+                        help='Apply a boundary-aware prior/penalty on φ and p (default: none)')
+    parser.add_argument('--boundary-weight', type=float, default=1e-4,
+                        help='Weight for boundary prior/penalty (default: 1e-4)')
+
+    # Bootstrap controls
+    parser.add_argument('--bootstrap', action='store_true',
+                        help='Compute bootstrap CIs for the best model')
+    parser.add_argument('--bootstrap-samples', type=int, default=200,
+                        help='Number of bootstrap samples for --bootstrap (default: 200)')
+    
+    # Robust SE computation
+    parser.add_argument('--robust-se', action='store_true',
+                        help='Use robust SVD-based Hessian SEs and print Fisher condition numbers')
+    parser.add_argument('--robust-se-on', type=str, default='top', choices=['none','top','all'],
+                        help='Apply robust SEs to none, top models, or all (default: top)')
+    parser.add_argument('--robust-se-top-k', type=int, default=5,
+                        help='Number of top models (by AIC) to apply robust SEs when --robust-se-on=top')
+
+    # Parallel tuning
+    parser.add_argument('--n-workers', type=int, default=None,
+                        help='Number of workers for parallel fitting (default: auto/min(cpu,8))')
+    parser.add_argument('--batch-size', type=int, default=8,
+                        help='Batch size for parallel fitting (default: 8)')
+
+    # Aggregation and Firth refinement
+    parser.add_argument('--aggregate', type=str, default='none', choices=['none','by_history'],
+                        help='Aggregate identical capture histories (valid for intercept-only models)')
+    parser.add_argument('--firth-refine', action='store_true',
+                        help='Run post-MLE Firth bias-reduction refinement on best model')
+    parser.add_argument('--firth-steps', type=int, default=2,
+                        help='Number of refinement steps for Firth (default: 2)')
+    parser.add_argument('--firth-weight', type=float, default=1.0,
+                        help='Weight for Firth penalty (Jeffreys prior) (default: 1.0)')
+
+    # Prefer only time-varying base covariates (e.g., use 'age' not 'age_YYYY')
+    parser.add_argument('--prefer-tv-only', action='store_true',
+                        help="Prefer only time-varying base covariates when available (exclude single-year 'age_YYYY'/'tier_YYYY')")
     args = parser.parse_args()
+    
+    # Map strategy argument once for reuse
+    selected_strategy_global = None
+    if args.strategy:
+        try:
+            selected_strategy_global = OptimizationStrategy(args.strategy)
+        except ValueError:
+            selected_strategy_global = None
     
     # Handle list datasets option
     if args.list_datasets:
@@ -161,87 +274,31 @@ def main():
         print(f"📂 Loading data from: {data_file}")
         import pandas as pd  # Re-import to be sure
         
-        if args.sample_size == 0:
-            # Full dataset processing
-            print("   Loading full dataset for large-scale analysis...")
-            if args.chunk_size and args.chunk_size < 50000:
-                # Use chunked loading for memory efficiency
-                print(f"   Using chunked loading (chunk size: {args.chunk_size:,})...")
-                chunk_iter = pd.read_csv(data_file, chunksize=args.chunk_size)
-                chunks = list(chunk_iter)
-                sampled_data = pd.concat(chunks, ignore_index=True)
-                print(f"   Loaded {len(chunks)} chunks, total shape: {sampled_data.shape}")
-            else:
-                # Direct loading for sufficient memory
-                sampled_data = pd.read_csv(data_file)
-                print(f"   Full dataset shape: {sampled_data.shape}")
-            sample_size = len(sampled_data)
-            print(f"🚀 Processing full dataset: {sample_size:,} individuals")
-        else:
-            # Sample-based processing
-            full_data = pd.read_csv(data_file)
-            print(f"   Full dataset shape: {full_data.shape}")
-            
-            # Random sample of specified size
-            sample_size = min(args.sample_size, len(full_data))
-            print(f"🎲 Randomly sampling {sample_size:,} rows...")
-            
-            # Set random seed for reproducibility
-            np.random.seed(42)
-            sampled_data = full_data.sample(n=sample_size, random_state=42)
-            print(f"   Sample shape: {sampled_data.shape}")
+        # Use our updated data loaders for proper time-varying covariate handling
+        print(f"🔄 Loading data using {dataset_config['name']} data loader...")
+
+        # Determine sample size for the data loader
+        loader_sample_size = None if args.sample_size == 0 else args.sample_size
+
+        # Load data using the appropriate loader function
+        data_context, sampled_data = dataset_config['loader_func'](
+            n_sample=loader_sample_size,
+            random_state=42  # Use fixed seed for reproducibility
+        )
+
+        if data_context is None:
+            print(f"❌ Failed to load data using {dataset_config['name']} data loader")
+            return
+
+        # Update sample size from actual loaded data
+        sample_size = len(sampled_data)
+        print(f"✅ Loaded {sample_size:,} individuals with time-varying covariates")
+        print(f"   Available covariates: {list(data_context.covariates.keys())}")
+
+        # Skip the old pandas loading and preprocessing - our loaders handle it
         
-        # Save sampled data to temporary file for loading
-        print("🔧 Converting to pradel-jax format...")
-        temp_file = f"temp_{dataset_config['abbrev'].lower()}_sample.csv"
-        sampled_data.to_csv(temp_file, index=False)
-        
-        # CRITICAL FIX: Preprocess covariates before loading
-        print("🔧 Preprocessing covariates for proper modeling...")
-        
-        # Fix gender coding and missing values
-        if 'gender' in sampled_data.columns:
-            # Convert 1.0->Male, 2.0->Female, NaN->Male (default)
-            sampled_data['gender'] = sampled_data['gender'].fillna(1.0)  # Fill missing with Male
-            sampled_data['gender'] = sampled_data['gender'].map({1.0: 'Male', 2.0: 'Female'})
-            print(f"   ✅ Gender: {sampled_data['gender'].value_counts().to_dict()}")
-        
-        # Standardize age for numerical stability (use dataset-specific age column)
-        age_column = dataset_config['age_column']
-        if age_column in sampled_data.columns:
-            original_age = sampled_data[age_column].copy()
-            # Create standardized 'age' column for modeling
-            sampled_data['age'] = (sampled_data[age_column] - sampled_data[age_column].mean()) / sampled_data[age_column].std()
-            print(f"   ✅ Age ({age_column}): standardized (mean={original_age.mean():.1f}, std={original_age.std():.1f})")
-        
-        # Simplify tier_history to meaningful categories
-        if 'tier_history' in sampled_data.columns:
-            # Create simple tier categories based on tier_history patterns
-            def categorize_tier(tier_val):
-                if pd.isna(tier_val):
-                    return 'Unknown'
-                tier_str = str(int(tier_val))
-                if tier_str.startswith('1'):
-                    return 'Tier1'
-                elif tier_str.startswith('2'):
-                    return 'Tier2'  
-                elif len(tier_str) >= 8:  # Long codes like 100000000
-                    return 'LongTerm'
-                else:
-                    return 'Other'
-            
-            sampled_data['tier'] = sampled_data['tier_history'].apply(categorize_tier)
-            print(f"   ✅ Tier: {sampled_data['tier'].value_counts().to_dict()}")
-            # Keep tier_history as backup but use tier for modeling
-        
-        # Save preprocessed data
-        sampled_data.to_csv(temp_file, index=False)
-        
-        # Force use of GenericFormatAdapter to avoid issues with 'ch' column
-        # Use Y-columns instead (Y2016-Y2024 are more reliable)
-        from pradel_jax.data.adapters import GenericFormatAdapter
-        generic_adapter = GenericFormatAdapter()
-        data_context = pj.load_data(temp_file, adapter=generic_adapter)
+        # Data is already loaded and preprocessed by our data loader
+        # No need for additional file conversion or preprocessing
         
         print("   Data summary:")
         print(f"   - Number of individuals: {data_context.n_individuals}")
@@ -264,26 +321,53 @@ def main():
         # Define target covariates for modeling based on dataset configuration
         target_covariates = []
         for cov in dataset_config['covariates']:
-            if cov in main_covariates:
+            # Prefer time-varying base names when present (e.g., 'age' vs 'age_2017')
+            if cov.startswith('age') and 'age' in main_covariates and isinstance(np.array(data_context.covariates['age']), np.ndarray) and np.array(data_context.covariates['age']).ndim == 2:
+                if 'age' not in target_covariates:
+                    target_covariates.append('age')
+                continue
+            if cov.startswith('tier') and 'tier' in main_covariates and isinstance(np.array(data_context.covariates['tier']), np.ndarray) and np.array(data_context.covariates['tier']).ndim == 2:
+                if 'tier' not in target_covariates:
+                    target_covariates.append('tier')
+                continue
+            if cov in main_covariates and cov not in target_covariates:
                 target_covariates.append(cov)
         
         # Handle dataset-specific covariate fallbacks
         if 'tier' not in target_covariates and 'tier_history' in main_covariates:
-            target_covariates.append('tier_history')
+            # Prefer time-varying tier if present; else fall back to tier_history (static)
+            if 'tier' in main_covariates and isinstance(np.array(data_context.covariates['tier']), np.ndarray) and np.array(data_context.covariates['tier']).ndim == 2:
+                target_covariates.append('tier')
+            else:
+                target_covariates.append('tier_history')
         
         # For South Dakota: add age covariates if available
         if dataset_key == 'south_dakota':
-            age_vars = [col for col in main_covariates if col.startswith('age_') and col != age_column]
+            age_vars = [col for col in main_covariates if col.startswith('age_') and col != 'age_baseline']
             for age_var in age_vars[:2]:  # Limit to prevent overparameterization
                 if age_var not in target_covariates:
                     target_covariates.append(age_var)
             
         print(f"   Target covariates for modeling: {target_covariates}")
+
+        # If requested, prefer only time-varying base covariates when available
+        if args.prefer_tv_only:
+            filtered = []
+            for cov in target_covariates:
+                if cov.startswith('age_') and 'age' in target_covariates:
+                    continue
+                if cov.startswith('tier_') and 'tier' in target_covariates:
+                    continue
+                filtered.append(cov)
+            target_covariates = filtered
+            print(f"   (TV-only) Using covariates: {target_covariates}")
         
-        # Generate all formula combinations for survival (φ) and recruitment (f)
-        phi_formulas = generate_formula_combinations(target_covariates)
-        f_formulas = generate_formula_combinations(target_covariates)
-        p_formulas = ["~1"]  # Keep detection constant for all models
+        # Generate all formula combinations for survival (φ), detection (p), and recruitment (f)
+        # Use our updated function that handles time-varying covariates
+        include_tv = not args.prefer_tv_only  # Include time-varying unless specifically requested not to
+        phi_formulas = generate_formula_combinations(dataset_config, include_time_varying=include_tv)
+        p_formulas = generate_formula_combinations(dataset_config, include_time_varying=include_tv)
+        f_formulas = generate_formula_combinations(dataset_config, include_time_varying=include_tv)
         
         # Limit total models to avoid excessive computation
         total_models = len(phi_formulas) * len(f_formulas) * len(p_formulas)
@@ -339,6 +423,33 @@ def main():
             print(f"   💾 Enabling memory optimization and garbage collection")
             gc.collect()  # Clean memory before starting
         
+        # If aggregation requested, only allow when all formulas are intercept-only
+        if args.aggregate == 'by_history':
+            only_intercepts = (phi_formulas == ["~1"]) and (f_formulas == ["~1"]) and (p_formulas == ["~1"])
+            if not only_intercepts:
+                print("   ⚠️  Aggregation by history skipped (formulas include covariates)")
+            else:
+                try:
+                    cm = np.array(data_context.capture_matrix)
+                    uniq, idx, counts = np.unique(cm, axis=0, return_index=True, return_counts=True)
+                    # Rebuild minimal covariates with weights
+                    new_covariates = {"weights": jnp.array(counts)}
+                    from pradel_jax.data.adapters import CovariateInfo, DataContext as DC
+                    cov_info = {"weights": CovariateInfo(name="weights", dtype="float", is_time_varying=False)}
+                    data_context = DC(
+                        capture_matrix=jnp.array(uniq),
+                        covariates=new_covariates,
+                        covariate_info=cov_info,
+                        n_individuals=uniq.shape[0],
+                        n_occasions=cm.shape[1],
+                        occasion_names=data_context.occasion_names,
+                        individual_ids=None,
+                        metadata={"adapter": "AggregatedByHistory"},
+                    )
+                    print(f"   ✅ Aggregated identical histories: {cm.shape[0]} -> {uniq.shape[0]} rows")
+                except Exception as ee:
+                    print(f"   ⚠️  Aggregation failed: {ee}")
+
         # Choose optimization approach based on dataset size
         if 'use_parallel' in locals() and use_parallel and sample_size >= 5000:
             # Parallel processing for medium to large datasets
@@ -369,8 +480,18 @@ def main():
                 parallel_results = fit_models_parallel(
                     model_specs=model_specs,
                     data_context=data_context,
-                    max_workers=min(mp.cpu_count(), 8),  # Limit to 8 cores max
-                    timeout_per_model=300  # 5 minutes per model
+                    n_workers=(args.n_workers or min(mp.cpu_count(), 8)),
+                    strategy=selected_strategy_global or OptimizationStrategy.HYBRID,
+                    batch_size=max(1, int(args.batch_size)),
+                    worker_options={
+                        'penalty': args.penalty,
+                        'lambda_penalty': args.lambda_penalty,
+                        'penalty_include_intercept': args.penalty_include_intercept,
+                        'warm_start': args.warm_start,
+                        'warm_start_iter': args.warm_start_iter,
+                        'boundary_prior': args.boundary_prior,
+                        'boundary_weight': args.boundary_weight,
+                    },
                 )
                 
                 # Convert parallel results to standard format
@@ -419,29 +540,163 @@ def main():
                             # Create and fit model
                             model = PradelModel()
                             design_matrices = model.build_design_matrices(formula_spec, data_context)
-                            
-                            # Define objective function
+
+                            # Helper: build ridge mask to optionally exclude intercepts
+                            def _ridge_mask(design_mats):
+                                sizes = [design_mats['phi'].parameter_count,
+                                         design_mats['p'].parameter_count,
+                                         design_mats['f'].parameter_count]
+                                mask = np.ones(sum(sizes), dtype=float)
+                                if not args.penalty_include_intercept:
+                                    # Zero-out intercept positions
+                                    idx = 0
+                                    for pname in ['phi','p','f']:
+                                        cols = design_mats[pname].column_names
+                                        if design_mats[pname].has_intercept:
+                                            try:
+                                                loc = cols.index('(Intercept)')
+                                                mask[idx + loc] = 0.0
+                                            except ValueError:
+                                                pass
+                                        idx += design_mats[pname].parameter_count
+                                return mask
+
+                            ridge_mask = _ridge_mask(design_matrices)
+
+                            # Define objective function with optional penalty
                             def objective(params):
-                                return -model.log_likelihood(params, data_context, design_matrices)
-                            
-                            # Configure optimization for large datasets
-                            optimization_kwargs = {
-                                'objective_function': objective,
-                                'initial_parameters': model.get_initial_parameters(data_context, design_matrices),
-                                'context': data_context,
-                                'bounds': model.get_parameter_bounds(data_context, design_matrices)
+                                nll = -model.log_likelihood(params, data_context, design_matrices)
+                                if args.penalty == 'ridge':
+                                    # Quadratic penalty (optionally exclude intercepts)
+                                    pen = args.lambda_penalty * float(np.sum((np.asarray(params) ** 2) * ridge_mask))
+                                    return nll + pen
+                                elif args.penalty == 'firth':
+                                    # Placeholder: full Firth inside objective is computationally expensive for large N
+                                    # Keeping as base nll for now; robust SE and bootstrap recommended for inference
+                                    pass
+                                # Optional boundary-aware prior on φ and p to reduce boundary pile-up
+                                if args.boundary_prior != 'none' and args.boundary_weight > 0:
+                                    # Split params and compute linear predictors for phi and p
+                                    sizes = [design_matrices['phi'].parameter_count,
+                                             design_matrices['p'].parameter_count,
+                                             design_matrices['f'].parameter_count]
+                                    phi_params = np.asarray(params[:sizes[0]])
+                                    p_params = np.asarray(params[sizes[0]:sizes[0]+sizes[1]])
+                                    X_phi = np.asarray(design_matrices['phi'].matrix)
+                                    X_p = np.asarray(design_matrices['p'].matrix)
+                                    eta_phi = X_phi @ phi_params
+                                    eta_p = X_p @ p_params
+                                    phi_prob = 1.0 / (1.0 + np.exp(-eta_phi))
+                                    p_prob = 1.0 / (1.0 + np.exp(-eta_p))
+                                    eps = 1e-12
+                                    if args.boundary_prior == 'barrier':
+                                        # Log-barrier on probabilities
+                                        prior_term = - (np.log(phi_prob*(1-phi_prob) + eps) + np.log(p_prob*(1-p_prob) + eps)).mean()
+                                    else:
+                                        # 'jeffreys' ~ p^{-1/2}(1-p)^{-1/2} -> penalty ~ -1/2[log p + log(1-p)]
+                                        prior_term = -0.5 * (np.log(phi_prob + eps) + np.log(1-phi_prob + eps) +
+                                                             np.log(p_prob + eps) + np.log(1-p_prob + eps)).mean()
+                                    nll = nll + float(args.boundary_weight) * prior_term
+                                return nll
+
+                            # Configure optimization (with optional warm-start intercept)
+                            initial_params = model.get_initial_parameters(data_context, design_matrices)
+
+                            if args.warm_start == 'intercept':
+                                try:
+                                    # Build intercept-only spec and fit quickly
+                                    ispec = create_simple_spec(phi='~1', p='~1', f='~1')
+                                    dm_i = model.build_design_matrices(ispec, data_context)
+                                    init_i = model.get_initial_parameters(data_context, dm_i)
+                                    bnd_i = model.get_parameter_bounds(data_context, dm_i)
+
+                                    def obj_i(p):
+                                        return -model.log_likelihood(p, data_context, dm_i)
+
+                                    # Quick LBFGS for warm start (few iterations)
+                                    from pradel_jax.optimization import optimize_model as optm
+                                    warm_resp = optm(
+                                        objective_function=obj_i,
+                                        initial_parameters=np.array(init_i),
+                                        context=data_context,
+                                        bounds=bnd_i,
+                                        preferred_strategy=selected_strategy_global or OptimizationStrategy.SCIPY_LBFGS,
+                                        config_overrides={'max_iter': int(args.warm_start_iter), 'tolerance': max(1e-6, args.tolerance)}
+                                    )
+                                    if warm_resp.success:
+                                        theta_i = np.array(warm_resp.result.x)
+                                        # Map intercepts into full start vector
+                                        # Determine indices of intercepts in target design matrices
+                                        def _segment_lengths(dm):
+                                            return [dm['phi'].parameter_count, dm['p'].parameter_count, dm['f'].parameter_count]
+                                        seg_i = _segment_lengths(dm_i)
+                                        seg_t = _segment_lengths(design_matrices)
+                                        # Extract intercepts from theta_i by segments (each segment has 1 param if intercept-only)
+                                        phi_i, p_i, f_i = theta_i[0], theta_i[1], theta_i[2]
+                                        # Build start for target
+                                        start = np.array(initial_params, dtype=float)
+                                        idx = 0
+                                        # phi
+                                        if design_matrices['phi'].has_intercept:
+                                            try:
+                                                loc = design_matrices['phi'].column_names.index('(Intercept)')
+                                                start[idx + loc] = phi_i
+                                            except ValueError:
+                                                pass
+                                        idx += seg_t[0]
+                                        # p
+                                        if design_matrices['p'].has_intercept:
+                                            try:
+                                                loc = design_matrices['p'].column_names.index('(Intercept)')
+                                                start[idx + loc] = p_i
+                                            except ValueError:
+                                                pass
+                                        idx += seg_t[1]
+                                        # f
+                                        if design_matrices['f'].has_intercept:
+                                            try:
+                                                loc = design_matrices['f'].column_names.index('(Intercept)')
+                                                start[idx + loc] = f_i
+                                            except ValueError:
+                                                pass
+                                        initial_params = start
+                                except Exception as ee:
+                                    print(f"      ⚠️  Warm-start failed, using default initials: {ee}")
+                            bounds = model.get_parameter_bounds(data_context, design_matrices)
+
+                            # Prepare config overrides
+                            config_overrides = {
+                                'max_iter': args.max_iter,
+                                'tolerance': args.tolerance,
                             }
                             
-                            # Add large-scale config for very large datasets
-                            if sample_size >= 50000:
-                                optimization_kwargs['config_overrides'] = {
-                                    'batch_size': min(10000, sample_size // 10),
-                                    'num_workers': min(4, mp.cpu_count())
-                                }
-                            
                             # Optimize
-                            result = optimize_model(**optimization_kwargs)
-                        
+                            if selected_strategy_global == OptimizationStrategy.MULTI_START:
+                                # Use direct optimizer to expose n_starts control
+                                base_config = OptimizationConfig(max_iter=args.max_iter, tolerance=args.tolerance)
+                                optimizer = create_optimizer(
+                                    OptimizationStrategy.MULTI_START,
+                                    base_config,
+                                    n_starts=max(1, int(args.multi_start_attempts)),
+                                )
+                                opt_res = optimizer.minimize(objective, np.array(initial_params), bounds=bounds)
+
+                                class SimpleResponse:
+                                    success = opt_res.success
+                                    result = opt_res
+                                    strategy_used = 'multi_start'
+
+                                result = SimpleResponse()
+                            else:
+                                result = optimize_model(
+                                    objective_function=objective,
+                                    initial_parameters=initial_params,
+                                    context=data_context,
+                                    bounds=bounds,
+                                    preferred_strategy=selected_strategy_global,
+                                    config_overrides=config_overrides,
+                                )
+
                             # Convert to compatible result format with statistical inference
                             if result.success:
                                 # Generate parameter names from formula specification
@@ -469,8 +724,48 @@ def main():
                                     'standard_errors': result.result.standard_errors,
                                     'confidence_intervals': result.result.confidence_intervals,
                                     'parameter_summary': result.result.get_parameter_summary(),
+                                    'fisher_condition_number': None,
                                     'lambda_mean': None  # Would need to calculate from parameters
                                 })()
+
+                                # Optional: robust SE via full FD Hessian + SVD
+                                if args.robust_se and args.robust_se_on == 'all':
+                                    try:
+                                        from pradel_jax.optimization.hessian_utils import compute_finite_difference_hessian_full
+                                        H = compute_finite_difference_hessian_full(objective, np.array(result.result.x), eps=1e-5)
+                                        fisher = H  # objective = -loglik, so Hessian(objective) ≈ Fisher
+                                        # Condition number
+                                        cond = float(np.linalg.cond(fisher))
+                                        # SVD-based stabilized inverse
+                                        U, s, Vt = np.linalg.svd(fisher, full_matrices=False)
+                                        floor = max(1e-12, s[0] * 1e-12)
+                                        s_reg = np.maximum(s, floor)
+                                        fisher_inv = (Vt.T * (1.0 / s_reg)) @ U.T
+                                        diag = np.maximum(np.diag(fisher_inv), 1e-12)
+                                        robust_se = np.sqrt(diag)
+
+                                        # Update result fields
+                                        model_result.standard_errors = robust_se
+                                        z = 1.96
+                                        lower = result.result.x - z * robust_se
+                                        upper = result.result.x + z * robust_se
+                                        model_result.confidence_intervals = np.column_stack([lower, upper])
+                                        # Parameter summary
+                                        summary = {}
+                                        for idx, name in enumerate(param_names):
+                                            se_i = float(robust_se[idx])
+                                            est = float(result.result.x[idx])
+                                            summary[name] = {
+                                                'estimate': est,
+                                                'std_error': se_i,
+                                                'ci_lower_95%': float(lower[idx]),
+                                                'ci_upper_95%': float(upper[idx]),
+                                                'z_score': (est / se_i) if se_i > 0 else None,
+                                            }
+                                        model_result.parameter_summary = summary
+                                        model_result.fisher_condition_number = cond
+                                    except Exception as ee:
+                                        print(f"      ⚠️  Robust SE computation failed: {ee}")
                             else:
                                 model_result = type('ModelResult', (), {
                                     'success': False,
@@ -531,6 +826,8 @@ def main():
                     print(f"   BIC: {result.bic:.3f}")
                 print(f"   Parameters: {result.n_parameters}")
                 print(f"   Strategy: {result.strategy_used}")
+                if hasattr(result, 'fisher_condition_number') and result.fisher_condition_number is not None:
+                    print(f"   Fisher cond.: {result.fisher_condition_number:.2e}")
                 
                 # Statistical inference information
                 if hasattr(result, 'standard_errors') and result.standard_errors is not None:
@@ -557,6 +854,27 @@ def main():
                 print(f"   BIC: {best_model.bic:.3f}")
             print(f"   Log-likelihood: {best_model.log_likelihood:.3f}")
             print(f"   Strategy: {best_model.strategy_used}")
+            if hasattr(best_model, 'fisher_condition_number') and best_model.fisher_condition_number is not None:
+                print(f"   Fisher cond.: {best_model.fisher_condition_number:.2e}")
+            # Boundary proximity warning for best model
+            try:
+                mdl, spec, dm, obj_fn, init, bnd = _spec_and_obj_from_model_name(best_model.model_name)
+                bounds = mdl.get_parameter_bounds(data_context, dm)
+                theta = np.array(best_model.parameters)
+                tol = 5e-2
+                names = []
+                for pname in ['phi','p','f']:
+                    names.extend([f"{pname}_{c}" for c in dm[pname].column_names])
+                near = []
+                for idx, (lo, hi) in enumerate(bounds[:len(theta)]):
+                    val = theta[idx]
+                    if (abs(val - lo) <= tol) or (abs(val - hi) <= tol):
+                        nm = names[idx] if idx < len(names) else f"param_{idx}"
+                        near.append(nm)
+                if near:
+                    print(f"   ⚠️  Near-bound parameters: {', '.join(near)}")
+            except Exception:
+                pass
             
             # Detailed parameter table for best model
             if hasattr(best_model, 'parameter_summary') and best_model.parameter_summary is not None:
@@ -588,6 +906,149 @@ def main():
                 print(f"   * p < 0.05")
             else:
                 print(f"   Parameter estimates: {[f'{p:.4f}' for p in best_model.parameters]}")
+
+            # Helpers to (re)construct model spec and objective from a result
+            def _spec_and_obj_from_model_name(model_name: str):
+                mdl = PradelModel()
+                parts = model_name.split('_')
+                phi = parts[0].replace('phi', '')
+                p = parts[1].replace('p', '')
+                f = parts[2].replace('f', '')
+                spec = create_simple_spec(phi=phi, p=p, f=f)
+                dm = mdl.build_design_matrices(spec, data_context)
+                def obj_fn(params):
+                    return -mdl.log_likelihood(params, data_context, dm)
+                init = mdl.get_initial_parameters(data_context, dm)
+                bnd = mdl.get_parameter_bounds(data_context, dm)
+                return mdl, spec, dm, obj_fn, init, bnd
+
+            # Apply robust SEs to top-k models if requested (post-fit)
+            if args.robust_se and args.robust_se_on == 'top' and len(successful_results) > 0:
+                top_k = min(max(1, int(args.robust_se_top_k)), len(successful_results))
+                print(f"\n🔧 Computing robust SEs for top {top_k} model(s)...")
+                for idx in range(top_k):
+                    res = successful_results[idx]
+                    try:
+                        mdl, spec, dm, obj_fn, init, bnd = _spec_and_obj_from_model_name(res.model_name)
+                        from pradel_jax.optimization.hessian_utils import compute_finite_difference_hessian_full
+                        H = compute_finite_difference_hessian_full(obj_fn, np.array(res.parameters), eps=1e-5)
+                        fisher = H
+                        cond = float(np.linalg.cond(fisher))
+                        U, s, Vt = np.linalg.svd(fisher, full_matrices=False)
+                        floor = max(1e-12, s[0] * 1e-12)
+                        s_reg = np.maximum(s, floor)
+                        fisher_inv = (Vt.T * (1.0 / s_reg)) @ U.T
+                        diag = np.maximum(np.diag(fisher_inv), 1e-12)
+                        robust_se = np.sqrt(diag)
+                        # Update result entry
+                        res.standard_errors = robust_se
+                        z = 1.96
+                        lower = np.array(res.parameters) - z * robust_se
+                        upper = np.array(res.parameters) + z * robust_se
+                        res.confidence_intervals = np.column_stack([lower, upper])
+                        res.fisher_condition_number = cond
+                        print(f"   {idx+1}. {res.model_name} -> Fisher cond.: {cond:.2e}")
+                    except Exception as ee:
+                        print(f"   {idx+1}. {res.model_name} -> robust SE failed: {ee}")
+
+            # Bootstrap best or top-k models as requested
+            if args.bootstrap:
+                if bootstrap_confidence_intervals is None:
+                    print("\n⚠️  Bootstrap utilities unavailable; skipping --bootstrap")
+                else:
+                    def _bootstrap_for_model(res):
+                        try:
+                            mdl, spec, dm, obj_fn, init, bnd = _spec_and_obj_from_model_name(res.model_name)
+                            def fit_fn(dc):
+                                # rebuild design matrices for bootstrap dc
+                                dm2 = mdl.build_design_matrices(spec, dc)
+                                init2 = mdl.get_initial_parameters(dc, dm2)
+                                bnd2 = mdl.get_parameter_bounds(dc, dm2)
+                                def obj2(params):
+                                    return -mdl.log_likelihood(params, dc, dm2)
+                                if selected_strategy_global == OptimizationStrategy.MULTI_START:
+                                    base_cfg = OptimizationConfig(max_iter=args.max_iter, tolerance=args.tolerance)
+                                    opt = create_optimizer(OptimizationStrategy.MULTI_START, base_cfg, n_starts=max(1, int(args.multi_start_attempts)))
+                                    r = opt.minimize(obj2, np.array(init2), bounds=bnd2)
+                                    return np.array(r.x), -float(r.fun)
+                                else:
+                                    resp = optimize_model(
+                                        objective_function=obj2,
+                                        initial_parameters=np.array(init2),
+                                        context=dc,
+                                        bounds=bnd2,
+                                        preferred_strategy=selected_strategy_global,
+                                        config_overrides={'max_iter': args.max_iter, 'tolerance': args.tolerance},
+                                    )
+                                    r = resp.result
+                                    return np.array(r.x), -float(r.fun)
+                            boot = bootstrap_confidence_intervals(
+                                data_context, fit_fn, n_bootstrap_samples=int(args.bootstrap_samples)
+                            )
+                            se_range = (float(np.min(boot.standard_errors)), float(np.max(boot.standard_errors)))
+                            print(f"   Bootstrap SE range for {res.model_name}: [{se_range[0]:.4f}, {se_range[1]:.4f}]")
+                        except Exception as e:
+                            print(f"   ⚠️  Bootstrap failed for {res.model_name}: {e}")
+
+                    if getattr(args, 'bootstrap_on', None) in ('top','best'):
+                        pass
+                    else:
+                        # default behavior retained below
+                        args.bootstrap_on = 'best'
+
+                    print("\n🔁 Running bootstrap:")
+                    if args.bootstrap_on == 'best':
+                        _bootstrap_for_model(best_model)
+                    elif args.bootstrap_on == 'top':
+                        top_k = min( max(1, int(getattr(args,'bootstrap_top_k', 3))), len(successful_results))
+                        print(f"   Top {top_k} models (by AIC)")
+                        for idx in range(top_k):
+                            _bootstrap_for_model(successful_results[idx])
+
+            # Post-MLE Firth refinement (best model)
+            if args.firth_refine and len(successful_results) > 0:
+                try:
+                    print("\n🔧 Firth refinement on best model (post-MLE)...")
+                    res = successful_results[0]
+                    mdl, spec, dm, obj_fn, init, bnd = _spec_and_obj_from_model_name(res.model_name)
+
+                    # Build base negative log-likelihood (exclude penalties)
+                    def nll_theta(theta):
+                        return -mdl.log_likelihood(theta, data_context, dm)
+
+                    # Firth objective: nll + 0.5 * firth_weight * logdet(Fisher)
+                    def firth_obj(theta):
+                        from pradel_jax.optimization.hessian_utils import compute_finite_difference_hessian_full
+                        H = compute_finite_difference_hessian_full(nll_theta, np.array(theta), eps=1e-5)
+                        # Fisher ≈ Hessian(nll)
+                        U, s, Vt = np.linalg.svd(H, full_matrices=False)
+                        # Stabilize small singular values
+                        floor = max(1e-12, s[0] * 1e-12)
+                        s_reg = np.maximum(s, floor)
+                        logdet = float(np.sum(np.log(s_reg)))
+                        return float(nll_theta(theta)) + 0.5 * float(args.firth_weight) * logdet
+
+                    # Run a few refinement steps starting from current params
+                    theta0 = np.array(res.parameters)
+                    from pradel_jax.optimization import optimize_model as optm
+                    refine = optm(
+                        objective_function=firth_obj,
+                        initial_parameters=theta0,
+                        context=data_context,
+                        bounds=bnd,
+                        preferred_strategy=OptimizationStrategy.SCIPY_LBFGS,
+                        config_overrides={"max_iter": max(20, int(args.firth_steps) * 10), "tolerance": max(1e-7, args.tolerance)}
+                    )
+                    if refine.success:
+                        refined = np.array(refine.result.x)
+                        # Update best result fields
+                        res.parameters = refined
+                        res.log_likelihood = float(-refine.result.fun)  # approx
+                        print("   ✅ Firth refinement complete")
+                    else:
+                        print("   ⚠️  Firth refinement did not converge; keeping original MLE")
+                except Exception as ee:
+                    print(f"   ⚠️  Firth refinement failed: {ee}")
                 
             # Model comparison summary if multiple models
             if len(successful_results) > 1:
@@ -718,8 +1179,43 @@ def main():
                         successful_df['evidence_ratio'] = best_weight / successful_df['aic_weight']
                     
                     comparison_df = successful_df
-                else:
-                    comparison_df = successful_df
+
+                # Enrich comparison with diagnostics: Fisher condition (if computed) and boundary proximity
+                def _near_bound_info(model_name: str):
+                    try:
+                        mdl, spec, dm, obj_fn, init, bnd = _spec_and_obj_from_model_name(model_name)
+                        bounds = mdl.get_parameter_bounds(data_context, dm)
+                        res = next((x for x in results if getattr(x, 'success', False) and getattr(x, 'model_name','') == model_name), None)
+                        if res is None or not hasattr(res, 'parameters'):
+                            return False, 0, ''
+                        theta = np.array(res.parameters)
+                        near_names = []
+                        tol = 5e-2  # link-scale proximity tolerance
+                        # Construct param names
+                        names = []
+                        for pname in ['phi','p','f']:
+                            names.extend([f"{pname}_{c}" for c in dm[pname].column_names])
+                        for idx, (lo, hi) in enumerate(bounds[:len(theta)]):
+                            val = theta[idx]
+                            if (abs(val - lo) <= tol) or (abs(val - hi) <= tol):
+                                nm = names[idx] if idx < len(names) else f"param_{idx}"
+                                near_names.append(nm)
+                        return len(near_names) > 0, len(near_names), ";".join(near_names)
+                    except Exception:
+                        return False, 0, ''
+
+                # Fisher condition numbers mapped if available
+                fisher_map = {}
+                for r in results:
+                    if getattr(r, 'success', False) and hasattr(r, 'fisher_condition_number') and r.fisher_condition_number is not None:
+                        fisher_map[r.model_name] = r.fisher_condition_number
+                comparison_df['fisher_condition'] = comparison_df['model_name'].map(fisher_map)
+
+                # Boundary flags
+                nb_tuple = comparison_df['model_name'].apply(lambda m: _near_bound_info(m))
+                comparison_df['near_bound_any'] = nb_tuple.apply(lambda t: t[0])
+                comparison_df['near_bound_count'] = nb_tuple.apply(lambda t: t[1])
+                comparison_df['near_bound_params'] = nb_tuple.apply(lambda t: t[2])
                 
                 comparison_file = f"{dataset_prefix}_model_comparison_{sample_size}ind_{timestamp}.csv"
                 comparison_df.to_csv(comparison_file, index=False)
@@ -737,35 +1233,78 @@ def main():
                 model_summary_file = f"{dataset_prefix}_model_selection_{sample_size}ind_{timestamp}.csv"
                 model_summary.to_csv(model_summary_file, index=False)
                 
-                # B. Best model parameter details
-                if len(results) > 0 and hasattr(results[0], 'parameter_summary'):
-                    best_result = None
-                    for result in results:
-                        if hasattr(result, 'success') and result.success and hasattr(result, 'parameter_summary') and result.parameter_summary:
-                            best_result = result
-                            break
-                    
-                    if best_result:
-                        param_details_data = []
-                        for param_name, param_info in best_result.parameter_summary.items():
-                            param_details_data.append({
-                                'parameter': param_name,
-                                'estimate': param_info.get('estimate', None),
-                                'std_error': param_info.get('std_error', None),
-                                'z_score': param_info.get('z_score', None),
-                                'p_value': param_info.get('p_value', None),
-                                'ci_lower_95': param_info.get('ci_lower_95%', None),
-                                'ci_upper_95': param_info.get('ci_upper_95%', None),
-                                'significant_05': param_info.get('p_value', 1.0) < 0.05,
-                                'significant_01': param_info.get('p_value', 1.0) < 0.01,
-                                'model_name': best_result.model_name
-                            })
-                        
-                        param_details_df = pd.DataFrame(param_details_data)
-                        param_details_file = f"{dataset_prefix}_best_model_parameters_{sample_size}ind_{timestamp}.csv"
-                        param_details_df.to_csv(param_details_file, index=False)
-                    else:
-                        param_details_file = None
+                # B. Best model parameter details (ensure it matches best AIC model)
+                best_model_name = comparison_df.iloc[0]['model_name'] if len(comparison_df) > 0 else None
+                best_result = None
+                for r in results:
+                    if getattr(r, 'success', False) and getattr(r, 'model_name', '') == best_model_name:
+                        best_result = r
+                        break
+                # Build summary if missing or unreliable
+                def _needs_robust_summary(res):
+                    if res is None or not hasattr(res, 'parameter_summary') or not res.parameter_summary:
+                        return True
+                    try:
+                        ses = [v.get('std_error', None) for v in res.parameter_summary.values()]
+                        if any((s is None) or (isinstance(s, (int,float)) and s >= 1e3) for s in ses):
+                            return True
+                    except Exception:
+                        return True
+                    return False
+
+                if best_result is not None and _needs_robust_summary(best_result):
+                    try:
+                        mdl, spec, dm, obj_fn, init, bnd = _spec_and_obj_from_model_name(best_result.model_name)
+                        # Compute robust SEs for best model
+                        from pradel_jax.optimization.hessian_utils import compute_finite_difference_hessian_full
+                        theta = np.array(best_result.parameters)
+                        H = compute_finite_difference_hessian_full(obj_fn, theta, eps=1e-5)
+                        U, s, Vt = np.linalg.svd(H, full_matrices=False)
+                        floor = max(1e-12, s[0] * 1e-12)
+                        s_reg = np.maximum(s, floor)
+                        H_inv = (Vt.T * (1.0 / s_reg)) @ U.T
+                        diag = np.maximum(np.diag(H_inv), 1e-12)
+                        se = np.sqrt(diag)
+                        z = 1.96
+                        lower = theta - z * se
+                        upper = theta + z * se
+                        # Parameter names from design matrices
+                        param_names = []
+                        for pname in ['phi','p','f']:
+                            cols = dm[pname].column_names
+                            param_names.extend([f"{pname}_{c}" for c in cols])
+                        summary = {}
+                        for idx, name in enumerate(param_names[:len(theta)]):
+                            summary[name] = {
+                                'estimate': float(theta[idx]),
+                                'std_error': float(se[idx]),
+                                'z_score': float(theta[idx]/se[idx]) if se[idx] > 0 else None,
+                                'ci_lower_95%': float(lower[idx]),
+                                'ci_upper_95%': float(upper[idx]),
+                            }
+                        best_result.parameter_summary = summary
+                    except Exception as ee:
+                        print(f"   ⚠️  Could not compute parameter summary for best model: {ee}")
+
+                if best_result is not None and hasattr(best_result, 'parameter_summary') and best_result.parameter_summary:
+                    param_details_data = []
+                    for param_name, param_info in best_result.parameter_summary.items():
+                        param_details_data.append({
+                            'parameter': param_name,
+                            'estimate': param_info.get('estimate', None),
+                            'std_error': param_info.get('std_error', None),
+                            'z_score': param_info.get('z_score', None),
+                            'p_value': param_info.get('p_value', None),
+                            'ci_lower_95': param_info.get('ci_lower_95%', None),
+                            'ci_upper_95': param_info.get('ci_upper_95%', None),
+                            'significant_05': param_info.get('p_value', 1.0) < 0.05,
+                            'significant_01': param_info.get('p_value', 1.0) < 0.01,
+                            'model_name': best_result.model_name
+                        })
+
+                    param_details_df = pd.DataFrame(param_details_data)
+                    param_details_file = f"{dataset_prefix}_best_model_parameters_{sample_size}ind_{timestamp}.csv"
+                    param_details_df.to_csv(param_details_file, index=False)
                 else:
                     param_details_file = None
                 
@@ -794,8 +1333,12 @@ def main():
                 print(f"   AIC: {best_model['aic']:.3f}")
                 print(f"   AIC Weight: {best_model['aic_weight']:.3f}")
                 if len(comparison_df) > 1:
-                    evidence_ratio = best_model['aic_weight'] / comparison_df.iloc[1]['aic_weight']
-                    print(f"   Evidence Ratio: {evidence_ratio:.1f}x better than next model")
+                    second_best_weight = comparison_df.iloc[1]['aic_weight']
+                    if second_best_weight > 0:
+                        evidence_ratio = best_model['aic_weight'] / second_best_weight
+                        print(f"   Evidence Ratio: {evidence_ratio:.1f}x better than next model")
+                    else:
+                        print(f"   Evidence Ratio: >1000x better than next model (extreme support)")
                 
                 # Model support summary
                 substantial_models = comparison_df[comparison_df['substantial_support'] == True]

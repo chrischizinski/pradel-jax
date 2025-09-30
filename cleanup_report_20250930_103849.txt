@@ -1,0 +1,89 @@
+================================================================================
+PRADEL-JAX REPOSITORY CLEANUP REPORT
+================================================================================
+Timestamp: 2025-09-30T10:38:49.680012
+Archive Location: archive/cleanup_20250930_103849
+
+================================================================================
+ROOT FILES
+================================================================================
+
+Files Moved: 169
+  - ne_direct_alternative_118789ind_20250926_091149.csv (0.09 MB)
+  - sd_no_checkpoint_alternative_99027ind_20250926_145807.csv (0.07 MB)
+  - ne_no_checkpoint_alternative_118789ind_20250926_141735.csv (0.07 MB)
+  - ne_full_results_118789ind_20250923_085045.csv (0.03 MB)
+  - ne_model_comparison_118789ind_20250923_085045.csv (0.03 MB)
+  - ne_full_results_100ind_20250923_084934.csv (0.03 MB)
+  - ne_full_results_118789ind_20250923_085651.csv (0.03 MB)
+  - ne_model_comparison_118789ind_20250923_085651.csv (0.03 MB)
+  - sd_full_results_99027ind_20250923_085721.csv (0.03 MB)
+  - ne_model_comparison_118789ind_20250924_085938.csv (0.03 MB)
+  - sd_full_results_99027ind_20250923_085151.csv (0.03 MB)
+  - ne_full_results_118789ind_20250924_085938.csv (0.03 MB)
+  - sd_model_comparison_99027ind_20250923_085151.csv (0.03 MB)
+  - ne_model_comparison_118789ind_20250923_133946.csv (0.03 MB)
+  - comprehensive_model_comparison.py (0.03 MB)
+  - sd_model_comparison_99027ind_20250923_085721.csv (0.03 MB)
+  - ne_model_comparison_100ind_20250923_084934.csv (0.03 MB)
+  - sd_model_comparison_99027ind_20250923_133938.csv (0.03 MB)
+  - phi_f_individual_analysis.py (0.02 MB)
+  - sd_full_results_99027ind_20250923_133938.csv (0.02 MB)
+  ... and 149 more
+
+Files Kept: 13
+  Essential: CHANGELOG.md, README.md, conftest.py, pyproject.toml, pytest.ini, requirements-dev.txt, requirements.txt, setup-codacy-guardrails.sh
+
+================================================================================
+DIRECTORIES
+================================================================================
+
+Directories Moved: 7
+  - test_checkpoints                              0.0 MB
+  - boundary_analysis_results                     0.2 MB
+  - checkpoints                                   0.4 MB
+  - corrected_boundary_results                    0.0 MB
+  - optimization_experiments                      0.0 MB
+  - comprehensive_model_results                   0.3 MB
+  - robust_boundary_results                       0.0 MB
+
+Directories Kept: 12
+  __pycache__, archive, config, data, docs, examples, logs, pradel_env, pradel_jax, pradel_jax.egg-info, scripts, tests
+
+================================================================================
+DATA FILES
+================================================================================
+
+Data Files Removed: 3
+  - data/20250903_sd_hip_tier_data.csv                     7.04 MB
+  - data/20250904_ne_hip_tier_data.csv                     8.99 MB
+  - data/.DS_Store                                         0.01 MB
+
+================================================================================
+TEST ARTIFACTS
+================================================================================
+
+Test Artifacts Removed: 22
+  - tests/integration/optimization_integration_test_results_20250814_084253.json
+  - tests/integration/optimization_integration_test_results_20250813_152012.json
+  - tests/integration/simple_optimization_test_20250813_152412.json
+  - tests/benchmarks/large_scale_benchmark_results_20250924_091944.json
+  - tests/benchmarks/performance_baselines.json
+  - tests/benchmarks/large_scale_benchmark_results_20250822_090711.json
+  - tests/benchmarks/convergence_analysis_20250924_110031.json
+  - tests/benchmarks/large_scale_benchmark_results_20250924_110217.json
+  - tests/benchmarks/convergence_analysis_20250924_112625.json
+  - tests/benchmarks/convergence_analysis_20250821_164151.json
+  ... and 12 more
+
+================================================================================
+SUMMARY
+================================================================================
+
+Total Files/Directories Moved: 201
+Total Space Freed: 18.8 MB (0.02 GB)
+
+All moved items are preserved in:
+  archive/cleanup_20250930_103849
+
+================================================================================

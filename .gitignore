@@ -314,3 +314,5 @@ CLAUDE.md
 !requirements*.txt
 !pyproject.toml
 !setup.py
+# Ignore local contributor guide file
+AGENTS.md

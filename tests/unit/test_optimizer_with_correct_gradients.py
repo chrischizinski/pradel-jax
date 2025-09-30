@@ -153,7 +153,7 @@ def test_gradient_magnitude_scaling():
     )
     
     model = PradelModel()
-    design_matrices = model.build_design_matrices(formula_spec, design_matrices)
+    design_matrices = model.build_design_matrices(formula_spec, data_context)
     
     def gradient_magnitude_at_point(phi_nat, p_nat, f_nat):
         """Get gradient magnitude at a natural scale point."""

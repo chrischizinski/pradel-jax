@@ -195,31 +195,91 @@ class DesignMatrixBuilder:
             )
 
         # Check if this is a categorical variable
+        metadata = getattr(data_context, "metadata", {}) or {}
         is_categorical = data_context.covariates.get(
             f"{var_name}_is_categorical", False
         )
+        if not is_categorical:
+            is_categorical = metadata.get(f"{var_name}_is_categorical", False)
 
         if is_categorical:
             # Handle categorical variable with dummy coding
-            categories = data_context.covariates.get(f"{var_name}_categories", [])
-            categorical_codes = np.array(data_context.covariates[var_name])
+            categories = data_context.covariates.get(f"{var_name}_categories")
+            if categories is None:
+                categories = metadata.get(f"{var_name}_categories", [])
+            categorical_data = np.array(data_context.covariates[var_name])
 
-            # Create dummy variables (drop first category for identifiability)
-            if len(categories) <= 1:
-                # Only one category - create intercept-like column
-                column = np.ones(n_individuals, dtype=np.float32)
-                return [column], [var_name]
-            else:
-                # Multiple categories - create dummy variables (drop first)
+            def _resolve_category_codes(labels: List[Any], raw_data: np.ndarray) -> np.ndarray:
+                if not labels:
+                    return np.array([], dtype=float)
+
+                flattened = raw_data.reshape(-1)
+                # Filter NaNs for numeric arrays
+                if flattened.dtype.kind in {"f", "i"}:
+                    flattened = flattened.astype(float)
+                    flattened = flattened[~np.isnan(flattened)]
+                expected = np.arange(len(labels), dtype=float)
+                if flattened.size:
+                    unique_vals = np.unique(flattened)
+                    if (
+                        len(unique_vals) == len(labels)
+                        and np.allclose(np.sort(unique_vals), expected)
+                    ):
+                        return expected
+
+                # Try to coerce labels to numeric codes
+                try:
+                    numeric_labels = np.array([float(label) for label in labels], dtype=float)
+                    if numeric_labels.shape[0] == len(labels):
+                        return numeric_labels
+                except (TypeError, ValueError):
+                    pass
+
+                return expected
+
+            category_codes = _resolve_category_codes(categories, categorical_data)
+
+            # Time-varying categorical (2D): create per-occasion dummies
+            if categorical_data.ndim == 2:
+                if len(categories) <= 1:
+                    # Single level - intercept-like per occasion
+                    cols = [np.ones(n_individuals, dtype=np.float32) for _ in range(categorical_data.shape[1])]
+                    names = [f"{var_name}_t{t}" for t in range(categorical_data.shape[1])]
+                    return cols, names
                 columns = []
                 names = []
-
-                for i, category in enumerate(categories[1:], 1):  # Skip first category
-                    dummy_col = (categorical_codes == i).astype(np.float32)
-                    columns.append(dummy_col)
-                    names.append(f"{var_name}_{category}")
-
+                # Assume codes correspond to indices in categories; drop first level
+                for t in range(categorical_data.shape[1]):
+                    codes_t = categorical_data[:, t].astype(float)
+                    for code_value, category in zip(
+                        category_codes[1:], categories[1:]
+                    ):
+                        dummy_col = np.isclose(codes_t, code_value).astype(np.float32)
+                        columns.append(dummy_col)
+                        names.append(f"{var_name}_{category}_t{t}")
                 return columns, names
+            else:
+                categorical_codes = categorical_data.astype(float)
+                # Create dummy variables (drop first category for identifiability)
+                if len(categories) <= 1:
+                    # Only one category - create intercept-like column
+                    column = np.ones(n_individuals, dtype=np.float32)
+                    return [column], [var_name]
+                else:
+                    # Multiple categories - create dummy variables (drop first)
+                    columns = []
+                    names = []
+
+                    for code_value, category in zip(
+                        category_codes[1:], categories[1:]
+                    ):  # Skip first category
+                        dummy_col = np.isclose(categorical_codes, code_value).astype(
+                            np.float32
+                        )
+                        columns.append(dummy_col)
+                        names.append(f"{var_name}_{category}")
+
+                    return columns, names
         else:
             # Handle numeric variable
             covariate_data = np.array(data_context.covariates[var_name])
@@ -228,28 +288,24 @@ class DesignMatrixBuilder:
             if covariate_data.ndim == 1 and len(covariate_data) == n_individuals:
                 # Individual-level covariate
                 column = covariate_data.astype(np.float32)
+                return [column], [var_name]
             elif covariate_data.ndim == 2:
-                # Time-varying covariate - handle properly
+                # Time-varying numeric covariate: expand to per-occasion columns
                 self.logger.info(f"Processing time-varying covariate: {var_name}")
-
-                # Check if we have time-varying information in data context
-                if f"{var_name}_is_time_varying" in data_context.covariates:
-                    # Use the time-varying matrix directly
-                    # For Pradel models, parameters typically apply to intervals
-                    # Use appropriate time indexing based on parameter type
-
-                    # For simplicity, use the first available time point for now
-                    # TODO: Implement proper time-occasion mapping based on parameter type
-                    column = covariate_data[:, 0].astype(np.float32)
-                    self.logger.info(
-                        f"Using first time point for {var_name} (shape: {covariate_data.shape})"
-                    )
-                else:
-                    # Legacy handling - use first time point with warning
-                    self.logger.warning(
-                        f"Time-varying covariate {var_name} - using first time point (consider using time-varying framework)"
-                    )
-                    column = covariate_data[:, 0].astype(np.float32)
+                T = covariate_data.shape[1]
+                columns = []
+                names = []
+                K = min(T, n_occasions)
+                for t in range(K):
+                    col = covariate_data[:, t].astype(np.float32)
+                    if np.any(np.isnan(col)):
+                        row_means = np.nanmean(covariate_data, axis=1)
+                        col = np.where(np.isnan(col), row_means, col)
+                        overall = float(np.nanmean(covariate_data))
+                        col = np.where(np.isnan(col), overall, col).astype(np.float32)
+                    columns.append(col)
+                    names.append(f"{var_name}_t{t}")
+                return columns, names
             else:
                 raise DataFormatError(
                     specific_issue=f"Covariate '{var_name}' has unexpected shape: {covariate_data.shape}",
@@ -259,8 +315,6 @@ class DesignMatrixBuilder:
                         "Use time-varying covariate framework for multi-dimensional data",
                     ],
                 )
-
-            return [column], [var_name]
 
     def _build_interaction_columns(
         self,

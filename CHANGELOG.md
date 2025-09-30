@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Repository Cleanup Utility** (September 30, 2025)
+  - Created `cleanup_repository.py` for maintaining clean workspace
+  - Comprehensive cleanup moved 201 files/directories to archive (18.8 MB)
+  - Removed 169 temporary debug/investigation scripts from root
+  - Cleaned 7 temporary result directories (checkpoints, results, etc.)
+  - Removed 3 large sensitive data files (16 MB total)
+  - Added cleanup documentation to README
+  - All files safely preserved in `archive/` for recovery if needed
+
 - **MAJOR FEATURE**: Time-Varying Covariate Support (August 26, 2025)
   - Complete implementation addressing user requirement: "both tier and age are time-varying in our modeling"
   - Age time-varying: Detected `age_2016` through `age_2024` (9 occasions) with proper temporal progression
