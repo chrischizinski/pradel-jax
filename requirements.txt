@@ -33,6 +33,3 @@ scikit-learn>=1.5.0  # Updated to fix CVE-2024-5206
 pytest>=7.0.0
 pytest-cov>=4.0.0
 pytest-benchmark>=4.0.0
-
-# Optional: For R integration
-rpy2>=3.5.0  # If you want to call R from Python
