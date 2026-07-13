@@ -81,11 +81,43 @@ def calculate_seniority_gamma(phi: float, f: float) -> float:
     """
     Calculate seniority probability γ from Pradel (1996).
 
-    From Pradel (1996): γ = φ/(1+f)
-    This is the probability that an individual present at time i
-    was also present at time i-1.
+    γ = φ / λ = φ / (φ + f)
+
+    γ is the probability that an individual present at occasion i was already
+    present (had not just recruited) at occasion i-1. This is the reverse-time
+    analogue of survival φ and is what drives the recruitment side of the
+    Pradel temporal-symmetry likelihood.
     """
-    return phi / (1.0 + f)
+    return phi / (phi + f)
+
+
+@jax.jit
+def _affine_iterate(x0: float, rate: float, p: float, n_steps: float) -> float:
+    """
+    Closed-form value of the affine recursion x_j = (1 - rate) + rate*(1-p)*x_{j-1}.
+
+    This is the recursion shared by the two Pradel "tail" probabilities:
+
+    - χ (chi), probability an individual is not detected again after its last
+      capture: rate = φ, iterated over the occasions *after* the last capture.
+      χ_0 = 1, χ_j = (1-φ) + φ(1-p) χ_{j-1}.
+
+    - ξ (xi), probability of the (unobserved) history *before* first capture
+      given the individual is present-and-first-detected at that occasion:
+      rate = γ, iterated over the occasions *before* the first capture.
+      ξ_0 = 1, ξ_j = (1-γ) + γ(1-p) ξ_{j-1}.
+
+    The recursion is affine (x_j = a + b x_{j-1}, a = 1-rate, b = rate(1-p)),
+    so the j-fold iterate starting from x0 = 1 has the closed form
+        x_j = x* + b^j (x0 - x*),   x* = a / (1 - b),
+    which is exact and avoids any data-dependent Python control flow.
+    """
+    a = 1.0 - rate
+    b = rate * (1.0 - p)
+    # 1 - b = 1 - rate(1-p) > 0 for rate in [0,1], p in [0,1] (only degenerate
+    # at rate=1, p=0, which the parameter bounds/links exclude). Guard anyway.
+    fixed_point = a / jnp.maximum(1.0 - b, 1e-12)
+    return fixed_point + (b**n_steps) * (x0 - fixed_point)
 
 
 @jax.jit
@@ -93,174 +125,92 @@ def _pradel_individual_likelihood(
     capture_history: jnp.ndarray, phi: float, p: float, f: float
 ) -> float:
     """
-    Mathematically correct Pradel likelihood based on Pradel (1996).
+    Pradel (1996) individual log-likelihood contribution (temporal-symmetry form).
 
-    Implements the exact formulation from equation (2) in Pradel (1996):
+    Pradel's key insight is that a capture history contains information about both
+    survival (reading time forwards) and recruitment/seniority (reading time
+    backwards). The likelihood is therefore the product of a forward Cormack-Jolly-
+    Seber (CJS) likelihood and a reverse-time CJS likelihood over the same history,
+    sharing the detection probability p:
 
-    For an individual with capture history h = (h₁, h₂, ..., hₙ):
+        P(h) = L_forward(φ, p) · L_reverse(γ, p)
 
-    L(h) = Pr(first capture at j) × Pr(h_{j+1}, ..., h_k | captured at j) × Pr(not seen after k)
+    with, for a history first captured at occasion e and last captured at l,
 
-    Where:
-    - γᵢ = φᵢ₋₁/(1 + fᵢ₋₁) is the seniority probability
-    - λᵢ = 1 + fᵢ is the population growth rate
-    - φᵢ is the survival probability from i to i+1
-    - pᵢ is the detection probability at occasion i
+        γ = φ/λ,   λ = φ + f            (seniority / population growth rate)
+
+        L_forward = [Π_{i=e}^{l-1} φ] · [Π_{i=e+1}^{l} p^{h_i}(1-p)^{1-h_i}] · χ_l
+        L_reverse = [Π_{i=e}^{l-1} γ] · [Π_{i=e}^{l-1} p^{h_i}(1-p)^{1-h_i}] · ξ_e
+
+    where χ_l is the probability of not being detected after l (rate φ) and ξ_e is
+    its reverse-time analogue before e (rate γ), both closed-form iterates of
+    :func:`_affine_iterate`. Detections strictly inside (e, l) enter both products
+    (the temporal-symmetry double-use); the forward product uses the detection at
+    l and the reverse product the detection at e. The likelihood is conditional on
+    each individual being captured at least once.
 
     Args:
-        capture_history: Binary array of capture occasions (1=captured, 0=not)
-        phi: Survival probability (constant across occasions)
-        p: Detection probability (constant across occasions)
-        f: Per-capita recruitment rate (constant across occasions)
+        capture_history: Binary array (1=captured, 0=not) for one individual.
+        phi: Survival probability (constant across occasions).
+        p: Detection probability (constant across occasions).
+        f: Per-capita recruitment rate (constant across occasions).
 
     Returns:
-        Log-likelihood contribution for this individual
+        Log-likelihood contribution for this individual. Individuals that are
+        never captured are not part of the (conditional) Pradel likelihood and
+        contribute 0.
     """
     n_occasions = len(capture_history)
-    total_captures = jnp.sum(capture_history)
-
-    # Small constant to prevent log(0)
     epsilon = 1e-12
 
-    # Calculate derived parameters using Pradel (1996) relationships
-    gamma = calculate_seniority_gamma(phi, f)  # γ = φ/(1+f)
-    lambda_pop = 1.0 + f  # λ = 1 + f
+    total_captures = jnp.sum(capture_history)
+    indices = jnp.arange(n_occasions)
 
-    def never_captured_likelihood():
-        """
-        For never-captured individuals, calculate probability they were never in population
-        or were in population but never detected.
+    # First and last capture occasions (0-based). Defined only when captured;
+    # guarded by the final jnp.where for never-captured individuals.
+    first_capture = jnp.min(jnp.where(capture_history == 1, indices, n_occasions))
+    last_capture = jnp.max(jnp.where(capture_history == 1, indices, -1))
 
-        From Pradel (1996): This involves the probability of not entering during study
-        plus probability of entering but never being detected.
-        """
-        # Probability of never entering the population during the study
-        prob_never_enter = 1.0 / (lambda_pop ** (n_occasions - 1))
+    lambda_pop = phi + f  # λ = φ + f
+    gamma = phi / jnp.maximum(lambda_pop, epsilon)  # γ = φ/λ
 
-        # Probability of entering but never being detected
-        # Simplified: if entered, probability of never being detected = (1-p)^n_occasions
-        prob_enter_not_detected = (1.0 - prob_never_enter) * ((1.0 - p) ** n_occasions)
+    log_p = jnp.log(jnp.maximum(p, epsilon))
+    log_1mp = jnp.log(jnp.maximum(1.0 - p, epsilon))
+    log_phi = jnp.log(jnp.maximum(phi, epsilon))
+    log_gamma = jnp.log(jnp.maximum(gamma, epsilon))
 
-        total_prob = prob_never_enter + prob_enter_not_detected
-        return jnp.log(jnp.maximum(total_prob, epsilon))
+    # Per-occasion detection log-probability, h_i log p + (1-h_i) log(1-p).
+    det_logprob = capture_history * log_p + (1.0 - capture_history) * log_1mp
 
-    def captured_likelihood():
-        """
-        For captured individuals, implement the Pradel (1996) likelihood formulation.
-        """
-        # Find first and last capture occasions
-        indices = jnp.arange(n_occasions)
+    # Forward CJS detections cover occasions (e, l]; reverse CJS detections cover
+    # [e, l). Interior detections (strictly between e and l) are used by both.
+    fwd_mask = (indices > first_capture) & (indices <= last_capture)
+    rev_mask = (indices >= first_capture) & (indices < last_capture)
+    det_forward = jnp.sum(jnp.where(fwd_mask, det_logprob, 0.0))
+    det_reverse = jnp.sum(jnp.where(rev_mask, det_logprob, 0.0))
 
-        # Get first capture occasion
-        capture_indices = jnp.where(capture_history == 1, indices, n_occasions)
-        first_capture = jnp.min(capture_indices)
+    # Survival (forward) and seniority (reverse) each act over the l-e intervals.
+    n_intervals = (last_capture - first_capture).astype(jnp.float32)
+    survival_seniority = n_intervals * (log_phi + log_gamma)
 
-        # Get last capture occasion
-        last_capture_indices = jnp.where(capture_history == 1, indices, -1)
-        last_capture = jnp.max(last_capture_indices)
+    # ξ over the n_before occasions preceding first capture (reverse-time, rate γ)
+    n_before = first_capture.astype(jnp.float32)
+    xi = _affine_iterate(1.0, gamma, p, n_before)
 
-        # Initialize log-likelihood
-        log_likelihood = 0.0
+    # χ over the n_after occasions following last capture (forward, rate φ)
+    n_after = (n_occasions - 1 - last_capture).astype(jnp.float32)
+    chi = _affine_iterate(1.0, phi, p, n_after)
 
-        # Part 1: Probability of first capture at occasion 'first_capture'
-        # This includes probability of entering before or at first_capture
-        # and not being detected until first_capture, then being detected
-
-        # Probability of being in population at first capture (JAX-compatible)
-        entry_prob = jnp.where(
-            first_capture > 0,
-            gamma**first_capture,  # Could have entered at any previous occasion
-            1.0,  # Captured at first occasion - was definitely present
-        )
-
-        # Probability of not being detected until first_capture (JAX-compatible)
-        not_detected_prob = jnp.where(
-            first_capture > 0, (1.0 - p) ** first_capture, 1.0
-        )
-
-        # Probability of detection at first_capture
-        detected_prob = p
-
-        # Add first capture contribution
-        first_capture_contrib = entry_prob * not_detected_prob * detected_prob
-        log_likelihood += jnp.log(jnp.maximum(first_capture_contrib, epsilon))
-
-        # Part 2: Process occasions between first and last capture
-        # This follows CJS-like structure but with Pradel modifications
-
-        def process_intermediate_occasion(carry, t):
-            running_ll = carry
-
-            # Only process occasions after first capture and before/at last
-            in_active_period = (t > first_capture) & (t <= last_capture)
-
-            survival_contrib = jnp.where(
-                in_active_period,
-                jnp.log(jnp.maximum(phi, epsilon)),  # Survived to this occasion
-                0.0,
-            )
-
-            # Detection contribution (for occasions before last)
-            before_last = t < last_capture
-            in_detection_period = (t > first_capture) & before_last
-
-            captured_at_t = capture_history[t] == 1
-            detection_contrib = jnp.where(
-                in_detection_period,
-                jnp.where(
-                    captured_at_t,
-                    jnp.log(jnp.maximum(p, epsilon)),  # Detected
-                    jnp.log(jnp.maximum(1.0 - p, epsilon)),  # Not detected
-                ),
-                0.0,
-            )
-
-            # For last capture, we know it was detected (no choice probability)
-            at_last = t == last_capture
-            last_detection_contrib = jnp.where(
-                at_last,
-                jnp.log(jnp.maximum(p, epsilon)),  # Must be detected at last
-                0.0,
-            )
-
-            new_ll = (
-                running_ll
-                + survival_contrib
-                + detection_contrib
-                + last_detection_contrib
-            )
-            return new_ll, new_ll
-
-        # Scan over all occasions
-        final_ll, _ = jax.lax.scan(
-            process_intermediate_occasion, log_likelihood, jnp.arange(n_occasions)
-        )
-
-        # Part 3: Probability of not being seen after last capture
-        # This involves either death or emigration after last capture
-        # For occasions after last capture, individual either died or emigrated
-
-        occasions_after_last = n_occasions - 1 - last_capture
-
-        # JAX-compatible handling of occasions after last capture
-        not_available_prob = jnp.where(
-            occasions_after_last > 0,
-            (1.0 - phi * p) ** occasions_after_last,
-            1.0,  # No occasions after, so probability is 1
-        )
-
-        final_ll += jnp.where(
-            occasions_after_last > 0,
-            jnp.log(jnp.maximum(not_available_prob, epsilon)),
-            0.0,  # No contribution if no occasions after
-        )
-
-        return final_ll
-
-    # Return appropriate likelihood based on capture status
-    return jnp.where(
-        total_captures > 0, captured_likelihood(), never_captured_likelihood()
+    captured_ll = (
+        survival_seniority
+        + det_forward
+        + det_reverse
+        + jnp.log(jnp.maximum(xi, epsilon))
+        + jnp.log(jnp.maximum(chi, epsilon))
     )
+
+    # Never-captured individuals are not part of the conditional likelihood.
+    return jnp.where(total_captures > 0, captured_ll, 0.0)
 
 
 @jax.jit
@@ -301,13 +251,19 @@ class PradelModel(CaptureRecaptureModel):
     def __init__(
         self,
         model_type: ModelType = ModelType.PRADEL,
-        boundary_prior_strength: float = 0.75,
+        boundary_prior_strength: float = 0.0,
         boundary_prior_alpha: float = 2.0,
         boundary_prior_beta: float = 2.0,
-        recruitment_prior_strength: float = 0.5,
+        recruitment_prior_strength: float = 0.0,
         recruitment_prior_mode: float = 0.05,
         recruitment_prior_sigma: float = 0.75,
     ):
+        # NOTE: Priors are OFF by default so that log_likelihood() returns the
+        # true Pradel log-likelihood and AIC/BIC/inference are valid. The soft
+        # Beta/log-normal penalties remain available as an opt-in regularizer
+        # (set the *_prior_strength arguments > 0), but when enabled the value
+        # returned by log_likelihood is a penalized (MAP) objective, not the MLE
+        # log-likelihood — do not use it for AIC/likelihood-ratio comparisons.
         super().__init__(model_type)
         self.parameter_order = ["phi", "p", "f"]
         self.boundary_prior_strength = float(boundary_prior_strength)
@@ -614,8 +570,9 @@ class PradelModel(CaptureRecaptureModel):
         """
         Calculate lambda (population growth rate) from Pradel model parameters.
 
-        CORRECTED: In the Pradel model: λ = 1 + f  (NOT φ + f)
-        From Pradel (1996): λ = φ/γ = 1 + f, where γ = φ/(1+f)
+        In the Pradel (1996) recruitment (f) parameterization: λ = φ + f,
+        with seniority γ = φ/λ. This matches program MARK's "Pradel recruitment"
+        model, so estimates are comparable to RMark/MARK output.
 
         Args:
             parameters: Fitted parameter vector
@@ -629,16 +586,19 @@ class PradelModel(CaptureRecaptureModel):
         param_split = self._split_parameters(parameters, design_matrices)
 
         # Get design matrices
+        X_phi = design_matrices["phi"].matrix
         X_f = design_matrices["f"].matrix
 
         # Calculate linear predictors
+        eta_phi = X_phi @ param_split["phi"]
         eta_f = X_f @ param_split["f"]
 
         # Apply link functions
+        phi = inv_logit(eta_phi)  # Survival probability (0-1)
         f = exp_link(eta_f)  # Recruitment rate (positive)
 
-        # FIXED: Calculate lambda = 1 + recruitment rate (Pradel 1996)
-        lambda_values = 1.0 + f
+        # Pradel (1996) recruitment parameterization: λ = φ + f
+        lambda_values = phi + f
 
         return lambda_values
 
@@ -699,8 +659,8 @@ class PradelModel(CaptureRecaptureModel):
         p = inv_logit(eta_p)  # Detection probability (0-1)
         f = exp_link(eta_f)  # Recruitment rate (positive)
 
-        # FIXED: Calculate lambda (population growth rate) - Pradel (1996)
-        lambda_values = 1.0 + f
+        # Population growth rate - Pradel (1996) recruitment parameterization
+        lambda_values = phi + f
 
         # Calculate log-likelihood for validation
         log_likelihood = self.log_likelihood(parameters, data_context, design_matrices)

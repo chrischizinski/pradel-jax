@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import pandas as pd
 from scipy.optimize import minimize
 
-sys.path.insert(0, '/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+sys.path.insert(0, '/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax')
 
 import pradel_jax as pj
 from pradel_jax.models.pradel import PradelModel, logit, log_link, inv_logit, exp_link

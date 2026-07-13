@@ -1,5 +1,22 @@
 # Pradel Likelihood Correction Report
 
+> **SUPERSEDED (2026-07).** The "correction" described in this document was
+> itself incorrect. Its likelihood was a mis-specified CJS variant in which the
+> recruitment parameter `f` barely entered, the post-last-capture term used the
+> wrong closed form `(1 - phi*p)^n`, and it used `lambda = 1 + f` (and
+> `gamma = phi/(1+f)`). On the dipper benchmark it returned phi ~ 0.83, p ~ 0.36
+> and only stayed off the boundary because default Beta/log-normal priors were
+> silently folded into `log_likelihood` (which also invalidated AIC).
+>
+> The current implementation replaces it with the genuine Pradel (1996)
+> temporal-symmetry likelihood (forward CJS x reverse-time CJS sharing `p`),
+> using **`lambda = phi + f`** and **`gamma = phi/lambda`** (matching program
+> MARK's Pradel recruitment model). Priors are OFF by default so `log_likelihood`
+> is the true MLE objective. The constant model on dipper now returns
+> phi ~ 0.56, p ~ 0.90 (matching RMark). See `tests/unit/test_pradel_likelihood.py`.
+> The formulas quoted below are retained only for historical context and should
+> not be used.
+
 ## Summary
 
 This report documents the successful correction of the Pradel (1996) capture-recapture model likelihood implementation that was showing a 137% error versus reference values. The mathematical formulation has been corrected based on the original Pradel (1996) Biometrics paper.

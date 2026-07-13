@@ -17,7 +17,7 @@ import tempfile
 import os
 import sys
 
-sys.path.insert(0, '/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+sys.path.insert(0, '/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax')
 import pradel_jax as pj
 
 def load_and_prepare_nebraska_data(n_sample: int = None, random_state: int = 42):
@@ -34,7 +34,7 @@ def load_and_prepare_nebraska_data(n_sample: int = None, random_state: int = 42)
     print("Loading Nebraska dataset...")
     
     # Load raw data
-    df = pd.read_csv('/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/data/encounter_histories_ne_clean.csv')
+    df = pd.read_csv('/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax/data/encounter_histories_ne_clean.csv')
     print(f"  Loaded {len(df)} total records")
     
     # Filter out records with missing key covariates

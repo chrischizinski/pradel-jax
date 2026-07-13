@@ -72,9 +72,13 @@ class ExampleModelContext:
 
 def pradel_log_likelihood(params, context):
     """
-    Simplified Pradel model log-likelihood for demonstration.
-    
-    In practice, this would be the full likelihood from the Pradel model.
+    Synthetic objective function for demonstrating the optimizer only.
+
+    WARNING: This is NOT the Pradel likelihood. It is a made-up, smooth objective
+    used solely to show how the optimization framework is called. In particular
+    the ``log(1 + f)`` "recruitment" term below is arbitrary and does not
+    correspond to any Pradel relationship (the real model uses lambda = phi + f).
+    For the actual likelihood use ``pradel_jax.models.PradelModel.log_likelihood``.
     """
     # Split parameters (intercepts only for simplicity)
     phi_logit = params[0]  # Survival logit
@@ -109,8 +113,9 @@ def pradel_log_likelihood(params, context):
                 else:  # Not recaptured
                     log_lik += jnp.log(1 - phi * p)
     
-    # Add recruitment component (simplified)
-    log_lik += jnp.sum(jnp.log(1 + f)) * 0.1  # Recruitment term
+    # Arbitrary smooth term to keep f identified in this demo objective ONLY.
+    # NOT a Pradel recruitment relationship (see the docstring warning).
+    log_lik += jnp.sum(jnp.log(1 + f)) * 0.1
     
     return -log_lik  # Return negative log-likelihood for minimization
 

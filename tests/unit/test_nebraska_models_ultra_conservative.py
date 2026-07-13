@@ -25,7 +25,7 @@ import time
 from typing import Dict, List, Tuple, Any
 import warnings
 
-sys.path.insert(0, '/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+sys.path.insert(0, '/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax')
 
 import pradel_jax as pj
 from pradel_jax.models.pradel import PradelModel, logit, log_link, inv_logit, exp_link
@@ -40,7 +40,7 @@ def load_nebraska_data():
     print("Loading Nebraska dataset...")
     
     try:
-        df = pd.read_csv('/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax/data/encounter_histories_ne_clean.csv')
+        df = pd.read_csv('/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax/data/encounter_histories_ne_clean.csv')
         print(f"  Loaded {len(df)} total records")
         
         # Basic data quality checks

@@ -34,7 +34,7 @@ from pradel_jax.optimization.strategy import OptimizationStrategy, OptimizationC
 from pradel_jax.optimization.optimizers import create_optimizer
 
 # Import our data loaders
-sys.path.append('/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+sys.path.append('/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax')
 from nebraska_data_loader import load_and_prepare_nebraska_data
 from south_dakota_data_loader import load_and_prepare_south_dakota_data
 

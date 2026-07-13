@@ -3,6 +3,7 @@
 Test JAX Adam adaptive optimization on large datasets to demonstrate scalability.
 """
 
+import sys
 import time
 import numpy as np
 import pandas as pd
@@ -14,7 +15,20 @@ import pradel_jax as pj
 from pradel_jax.optimization import optimize_model
 from pradel_jax.optimization.strategy import OptimizationStrategy
 from pradel_jax.models import PradelModel
-from tests.benchmarks.test_large_scale_performance import LargeScaleDataGenerator, MemoryProfiler
+import os
+import pytest
+
+# The large-scale benchmark helpers live in tests/benchmarks/, which is not an
+# importable package (no __init__.py). Load them via an explicit path insert and
+# skip cleanly if unavailable, rather than erroring at collection time.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmarks"))
+try:
+    from test_large_scale_performance import LargeScaleDataGenerator, MemoryProfiler
+except Exception as exc:  # pragma: no cover - environment-dependent
+    pytest.skip(
+        f"Large-scale benchmark helpers unavailable ({exc}).",
+        allow_module_level=True,
+    )
 
 
 def test_jax_adam_scalability():

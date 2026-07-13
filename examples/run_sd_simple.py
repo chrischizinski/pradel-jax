@@ -8,7 +8,7 @@ import sys
 import subprocess
 
 def main():
-    repo_root = "/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax"
+    repo_root = "/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax"
     script_path = os.path.join(repo_root, "examples", "nebraska", "nebraska_sample_analysis.py")
 
     cmd = [

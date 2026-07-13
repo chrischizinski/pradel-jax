@@ -8,7 +8,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-sys.path.insert(0, '/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+sys.path.insert(0, '/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax')
 
 from pradel_jax.models.pradel import _pradel_individual_likelihood
 

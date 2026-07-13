@@ -16,13 +16,39 @@ import time
 from typing import Dict, List, Any
 import multiprocessing as mp
 
-sys.path.insert(0, '/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+import os
+import pytest
 
-from nebraska_data_loader import load_and_prepare_nebraska_data
+# Nebraska helpers live under scripts/analysis/nebraska/ and need the protected
+# Nebraska data that is not shipped with the repo. Skip cleanly when unavailable.
+_NEBRASKA_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "scripts", "analysis", "nebraska"
+)
+sys.path.insert(0, _NEBRASKA_DIR)
+
 from pradel_jax.optimization.parallel import ParallelOptimizer, ParallelModelSpec
 from pradel_jax.formulas.parser import FormulaParser
 from pradel_jax.formulas.spec import ParameterType, FormulaSpec
-from nebraska_ultra_conservative_validation import UltraConservativeValidator
+
+try:
+    from nebraska_data_loader import load_and_prepare_nebraska_data
+    from nebraska_ultra_conservative_validation import UltraConservativeValidator
+except Exception as exc:  # pragma: no cover - environment-dependent
+    pytest.skip(
+        f"Nebraska analysis helpers unavailable ({exc}); requires protected "
+        "Nebraska data.",
+        allow_module_level=True,
+    )
+
+_NE_DATA = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "encounter_histories_ne_clean.csv"
+)
+if not os.path.exists(_NE_DATA):
+    pytest.skip(
+        "Protected Nebraska encounter-history data not present; skipping "
+        "Nebraska-dependent tests.",
+        allow_module_level=True,
+    )
 
 def create_test_models() -> Dict[str, FormulaSpec]:
     """Create test model specifications for parallel testing."""

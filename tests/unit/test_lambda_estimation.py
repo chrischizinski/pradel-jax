@@ -3,8 +3,8 @@
 Test lambda (population growth rate) estimation in Pradel models.
 
 Verifies that:
-1. Lambda calculation is correct (λ = 1 + f)
-2. Lambda values are computed and reported properly 
+1. Lambda calculation is correct (λ = φ + f, Pradel 1996 recruitment model)
+2. Lambda values are computed and reported properly
 3. Lambda summaries are accurate
 4. Integration with parallel optimization works
 """
@@ -43,21 +43,21 @@ def test_lambda_calculation_basic():
     design_matrices = model.build_design_matrices(formula_spec, data_context)
     
     # Test with known parameter values
-    # Let's set f = log(0.5) so recruitment rate = 0.5, lambda = 1.5
+    # phi = inv_logit(0) = 0.5, f = exp(log(0.5)) = 0.5, so lambda = phi + f = 1.0
     test_params = np.array([0.0, 0.0, np.log(0.5)])  # phi=0.5, p=0.5, f=0.5
-    
+
     print(f"Test parameters: {test_params}")
     print(f"Expected f = exp({np.log(0.5):.3f}) = {np.exp(np.log(0.5)):.3f}")
-    print(f"Expected lambda = 1 + f = 1 + {np.exp(np.log(0.5)):.3f} = {1 + np.exp(np.log(0.5)):.3f}")
-    
+    print(f"Expected lambda = phi + f = 0.5 + {np.exp(np.log(0.5)):.3f} = {0.5 + np.exp(np.log(0.5)):.3f}")
+
     # Calculate lambda
     lambda_values = model.calculate_lambda(test_params, data_context, design_matrices)
-    
+
     print(f"Calculated lambda values: {lambda_values}")
     print(f"Lambda shape: {lambda_values.shape}")
-    
+
     # Check if all lambda values are the same (constant model)
-    expected_lambda = 1.5
+    expected_lambda = 1.0
     if np.allclose(lambda_values, expected_lambda):
         print(f"✅ Lambda calculation correct: all values = {expected_lambda:.3f}")
     else:
@@ -239,28 +239,28 @@ def test_lambda_theoretical_validation():
     import pradel_jax as pj
     
     print("Theoretical validation:")
-    print("   Pradel (1996): λ = 1 + f, where f is the recruitment rate")
-    print("   - If f = 0.2 (20% recruitment), then λ = 1.2 (20% population growth)")
-    print("   - If f = 0.0 (no recruitment), then λ = 1.0 (stable population)")
-    print("   - If f = -0.1 (10% decline), then λ = 0.9 (10% population decline)")
-    
-    # Test with specific recruitment values
+    print("   Pradel (1996) recruitment model: λ = φ + f")
+    print("   - φ=0.8, f=0.2 → λ = 1.0 (recruitment balances mortality, stable)")
+    print("   - φ=0.8, f=0.0 → λ = 0.8 (no recruitment, population declines)")
+    print("   - φ=0.6, f=0.6 → λ = 1.2 (recruitment exceeds mortality, growth)")
+
+    # Test with specific (phi, f) values; lambda = phi + f
     test_cases = [
-        ("Stable population", 0.0, 1.0),
-        ("Growing population", 0.5, 1.5),
-        ("Rapid growth", 1.0, 2.0),
-        ("Declining population", -0.1, 0.9),
-        ("Slow growth", 0.1, 1.1)
+        ("Stable population", 0.8, 0.2, 1.0),
+        ("Declining (no recruitment)", 0.8, 0.0, 0.8),
+        ("Growing population", 0.6, 0.6, 1.2),
+        ("Rapid growth", 0.7, 1.3, 2.0),
+        ("Slight decline", 0.5, 0.4, 0.9),
     ]
-    
+
     all_correct = True
-    
-    for case_name, f_value, expected_lambda in test_cases:
+
+    for case_name, phi_value, f_value, expected_lambda in test_cases:
         # Test the transformation directly
-        calculated_lambda = 1.0 + f_value
-        
+        calculated_lambda = phi_value + f_value
+
         if abs(calculated_lambda - expected_lambda) < 1e-10:
-            print(f"   ✅ {case_name}: f={f_value:.1f} → λ={calculated_lambda:.1f}")
+            print(f"   ✅ {case_name}: φ={phi_value:.1f}, f={f_value:.1f} → λ={calculated_lambda:.1f}")
         else:
             print(f"   ❌ {case_name}: Expected λ={expected_lambda:.1f}, got {calculated_lambda:.1f}")
             all_correct = False
@@ -297,7 +297,7 @@ if __name__ == "__main__":
     if overall_success:
         print(f"\n🎉 ALL LAMBDA TESTS PASSED!")
         print("Lambda estimation is working correctly:")
-        print("• Calculation follows Pradel (1996): λ = 1 + f")
+        print("• Calculation follows Pradel (1996): λ = φ + f")
         print("• Handles constant and covariate models properly")
         print("• Integrates with parallel optimization framework")
         print("• Produces meaningful summary statistics")

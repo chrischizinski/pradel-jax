@@ -29,7 +29,7 @@ from typing import Dict, List, Tuple, Any
 import warnings
 from nebraska_data_loader import load_and_prepare_nebraska_data
 
-sys.path.insert(0, '/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+sys.path.insert(0, '/Users/cchizinski2/gitlab/student_work/ava_britton/pradel-jax')
 
 import pradel_jax as pj
 from pradel_jax.models.pradel import PradelModel, logit, log_link, inv_logit, exp_link

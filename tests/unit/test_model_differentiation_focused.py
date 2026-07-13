@@ -13,10 +13,38 @@ import pandas as pd
 from scipy.optimize import minimize
 import time
 
-sys.path.insert(0, '/Users/cchizinski2/Documents/git2/student_work/ava_britton/pradel-jax')
+import os
+import pytest
 
-from nebraska_data_loader import load_and_prepare_nebraska_data
-from nebraska_ultra_conservative_validation import UltraConservativeValidator
+# The Nebraska analysis helpers now live under scripts/analysis/nebraska/ and
+# depend on the protected Nebraska encounter-history data, which is not shipped
+# with the repository (see .gitignore / Security section of CLAUDE.md). Make the
+# import robust and skip the whole module cleanly when either the helpers or the
+# data are unavailable, instead of erroring at collection time.
+_NEBRASKA_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "scripts", "analysis", "nebraska"
+)
+sys.path.insert(0, _NEBRASKA_DIR)
+
+try:
+    from nebraska_data_loader import load_and_prepare_nebraska_data
+    from nebraska_ultra_conservative_validation import UltraConservativeValidator
+except Exception as exc:  # pragma: no cover - environment-dependent
+    pytest.skip(
+        f"Nebraska analysis helpers unavailable ({exc}); requires protected "
+        "Nebraska data.",
+        allow_module_level=True,
+    )
+
+_NE_DATA = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "encounter_histories_ne_clean.csv"
+)
+if not os.path.exists(_NE_DATA):
+    pytest.skip(
+        "Protected Nebraska encounter-history data not present; skipping "
+        "Nebraska-dependent tests.",
+        allow_module_level=True,
+    )
 
 def test_model_differentiation_detailed():
     """

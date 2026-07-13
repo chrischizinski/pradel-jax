@@ -44,6 +44,13 @@
 **/*Hunter*.csv
 **/*HUNTER*.csv
 
+# Waterfowl hunter data - contains person_id (HUNTER_*) and dob.
+# Filename does not include an identifier keyword, so it needs an explicit rule.
+**/wf.dat*.csv
+**/wf.dat*.dat
+**/wf_dat*.csv
+**/waterfowl*.csv
+
 # SSH connection files and scripts
 **/ssh_*.py
 **/*ssh*.py
@@ -98,8 +105,8 @@
 !**/dipper*.csv        # Dipper data is public research data
 !**/dipper*.dat
 !**/test_datasets/dipper*.csv
-!**/wf.dat.csv         # This appears to be synthetic/test data
-!**/test_datasets/wf.dat.csv
+# NOTE: wf.dat.csv is NOT synthetic - it contains real hunter person_id and dob.
+# It must stay ignored (see waterfowl rules above). Do not re-add whitelist here.
 
 # =============================================================================
 # STANDARD PYTHON .GITIGNORE
