@@ -97,23 +97,23 @@ Standard Errors: {'phi_intercept': 0.097, 'phi_sex': 0.142, ...}
 
 **Quick Links:**
 - [Installation Instructions](docs/user-guide/installation.md)
-- [Fitting Options & Robust Inference](docs/user-guide/fitting-options.md)
 - [Your First Model Tutorial](docs/tutorials/quickstart.md)
 - [RMark Integration Guide](docs/tutorials/rmark-integration.md)
 - [Performance Optimization](docs/user-guide/performance.md)
 - [Troubleshooting Common Issues](docs/user-guide/troubleshooting.md)
+- [Example Datasets & Python API Usage](data/README.md)
 
 ## 🧰 Convenience Runners
 
-Run full analyses with recommended options:
+Run a full Nebraska/South Dakota-style constant-p Pradel analysis
+(tidyverse for data prep, reticulate driving the JAX fit):
 
 ```
-# Nebraska
-python examples/run_ne_full.py
-
-# South Dakota (time‑varying only)
-python examples/run_sd_full.py
+Rscript scripts/analysis/run_mr_nebraska_sd.R
 ```
+
+See `data/README.md` for a synthetic dataset with the same column schema
+you can point this at without needing real hunter data.
 
 ## 🚀 Features
 
@@ -182,19 +182,23 @@ python examples/run_sd_full.py
   - Robust SEs (SVD) and bootstrap CIs for the best model(s): `--robust-se` and `--bootstrap`
   - Warm‑start and ridge for stability: `--warm-start intercept --penalty ridge --lambda-penalty`
 
-### 🧪 Example: Time‑Varying + Robust Fitting
+### 🧪 Example: Time‑Varying Covariates via the Python API
 
+```python
+import pradel_jax as pj
+
+data_context = pj.load_data("data/synthetic_capture_recapture_data.csv")
+formula_spec = pj.create_formula_spec(
+    phi="~1 + gender + first_age + tier2_dummy",  # tier_2016..tier_2024 -> tier2_dummy
+    p="~1",
+    f="~1 + gender",
+)
+result = pj.fit_model(model=pj.PradelModel(), formula=formula_spec, data=data_context)
 ```
-python examples/nebraska/nebraska_sample_analysis.py \
-  --dataset south_dakota --sample-size 0 --max-models 64 \
-  --strategy hybrid --parallel --n-workers 8 --batch-size 8 \
-  --prefer-tv-only \
-  --warm-start intercept --penalty ridge --lambda-penalty 1e-4 \
-  --boundary-prior jeffreys --boundary-weight 1e-4 \
-  --robust-se --robust-se-on top --robust-se-top-k 5 \
-  --bootstrap --bootstrap-samples 200 \
-  --firth-refine --firth-steps 2
-```
+
+See `data/README.md` for the full data-prep steps (building `tier2_dummy`
+and `first_age` from the raw `tier_YYYY`/`age_YYYY` columns), or run the
+end-to-end R + reticulate pipeline in `scripts/analysis/run_mr_nebraska_sd.R`.
 
 - **🔧 Critical JAX Compatibility Fix (Aug 26, 2025)**: Resolved immutable array errors ✅
   - **Problem**: 5+ locations using in-place array assignments incompatible with JAX

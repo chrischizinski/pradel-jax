@@ -1127,7 +1127,6 @@ print(f"The skills demonstrated here apply to any capture-recapture study using 
 - [**Performance Guide**](../user-guide/performance.md) - Scaling to large datasets
 
 ### Example Scripts
-- [**Nebraska Analysis**](nebraska-analysis-walkthrough.md) - Large-scale real-world example
 - [**Multi-model Comparison**](model-comparison.md) - Advanced model selection
 - [**RMark Integration**](rmark-integration.md) - Validating against established tools
 

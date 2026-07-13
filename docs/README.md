@@ -15,7 +15,6 @@ Welcome to the Pradel-JAX documentation! This guide will help you get started wi
 - [**Optimization Framework**](user-guide/optimization.md) - Understanding optimization strategies
 - [**Formula System**](user-guide/formulas.md) - R-style formula syntax and usage
 - [**Configuration**](user-guide/configuration.md) - Customizing framework behavior
-- [**Fitting Options & Robust Inference**](user-guide/fitting-options.md) - Time‑varying, boundary priors, robust SEs
 
 ### 🧪 Tutorials
 - [**Basic Pradel Model**](tutorials/basic-pradel.md) - Step-by-step modeling walkthrough

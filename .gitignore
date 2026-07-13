@@ -117,6 +117,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Matplotlib font cache, pytest-benchmark cache
+.mplconfig/
+.benchmarks/
+
+# tests/unit/test_jax_adam_scalability.py writes these to repo root
+jax_adam_scalability_test_*.csv
+
 # C extensions
 *.so
 
