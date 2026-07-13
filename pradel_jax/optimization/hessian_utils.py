@@ -250,3 +250,72 @@ def validate_hessian_quality(hessian_inv: Union[np.ndarray, object]) -> dict:
         quality_info["issues"].append(f"Error extracting diagonal: {str(e)}")
 
     return quality_info
+
+
+def compute_jax_hessian_covariance(
+    objective_func: Callable,
+    x: np.ndarray,
+) -> Optional[np.ndarray]:
+    """Exact parameter covariance from the autodiff Hessian of the objective.
+
+    The objective is the negative log-likelihood, so its Hessian at the MLE is
+    the observed information matrix and its inverse is the asymptotic parameter
+    covariance. Using ``jax.hessian`` gives exact second derivatives (no
+    finite-difference step-size noise), which the scipy L-BFGS-B low-rank
+    ``hess_inv`` and finite-difference fallbacks only approximate.
+
+    Args:
+        objective_func: JAX-traceable negative log-likelihood ``f(params) -> scalar``.
+        x: Parameter vector at which to evaluate (the fitted estimates).
+
+    Returns:
+        The covariance matrix (inverse Hessian), or ``None`` if the objective is
+        not JAX-differentiable or the Hessian is not usable (non-finite/singular).
+    """
+    try:
+        import jax
+        import jax.numpy as jnp
+    except Exception:
+        return None
+
+    try:
+        H = np.asarray(jax.hessian(objective_func)(jnp.asarray(x, dtype=float)))
+    except Exception as e:
+        logger.info(f"JAX Hessian unavailable, will fall back: {e}")
+        return None
+
+    if H.ndim != 2 or H.shape[0] != H.shape[1] or not np.all(np.isfinite(H)):
+        logger.info("JAX Hessian not a finite square matrix; falling back.")
+        return None
+
+    # Symmetrize (guards against tiny asymmetries) and invert with a stable,
+    # condition-aware SVD pseudo-inverse (same damping used by the FD path).
+    H = 0.5 * (H + H.T)
+    try:
+        U, s, Vt = np.linalg.svd(H, full_matrices=False)
+        floor = max(1e-12, s[0] * 1e-12)
+        s_reg = np.maximum(s, floor)
+        cov = (Vt.T * (1.0 / s_reg)) @ U.T
+    except Exception as e:
+        logger.info(f"JAX Hessian inversion failed, falling back: {e}")
+        return None
+
+    return cov
+
+
+def compute_jax_hessian_std_errors(
+    objective_func: Callable,
+    x: np.ndarray,
+) -> Optional[np.ndarray]:
+    """Standard errors from the exact autodiff (``jax.hessian``) covariance.
+
+    Returns ``sqrt(diag(inv(H)))`` or ``None`` if the autodiff Hessian is not
+    available/usable, so callers can fall back to the finite-difference path.
+    """
+    cov = compute_jax_hessian_covariance(objective_func, x)
+    if cov is None:
+        return None
+    diag = np.diag(cov)
+    if not np.all(np.isfinite(diag)):
+        return None
+    return np.sqrt(np.maximum(diag, 0.0))

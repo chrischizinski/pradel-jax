@@ -117,6 +117,47 @@ def test_log_likelihood_unpenalized_by_default():
     )
 
 
+def test_standard_errors_from_jax_hessian_match_known_dipper():
+    """SEs come from the exact autodiff Hessian and match published dipper inference.
+
+    The objective is the negative log-likelihood, so its jax.hessian at the MLE is
+    the observed information matrix and its inverse is the parameter covariance.
+    For the dipper constant model, the published survival SE is ~0.025 on the
+    probability scale; on the logit scale that is ~0.025/(phi(1-phi)) ~ 0.10. The
+    earlier finite-difference Hessian produced ~0.001 (catastrophic cancellation),
+    which is what this guards against.
+    """
+    result, phi, _, _ = _fit_constant_dipper()
+    se = result.parameter_se
+    assert se is not None, "parameter_se should be populated from jax.hessian"
+    se = np.asarray(se, dtype=float)
+    assert np.all(np.isfinite(se)) and np.all(se > 0), f"bad SEs: {se}"
+
+    # Parameter order is phi, p, f (all intercepts); check the phi SE.
+    expected_phi_logit_se = 0.025 / (phi * (1 - phi))
+    assert se[0] == pytest.approx(expected_phi_logit_se, abs=0.02), (
+        f"phi SE {se[0]} not ~ {expected_phi_logit_se} (known dipper)"
+    )
+
+
+def test_jax_hessian_matches_direct_covariance():
+    """The wired-in SEs equal sqrt(diag(inv(jax.hessian))) computed directly."""
+    from pradel_jax.optimization.hessian_utils import compute_jax_hessian_std_errors
+
+    data = pj.load_data(DIPPER_PATH)
+    formula = pj.create_formula_spec(phi="~1", p="~1", f="~1")
+    model = PradelModel()
+    result = pj.fit_model(model=model, formula=formula, data=data)
+    design = model.build_design_matrices(formula, data)
+
+    obj = lambda p: -model.log_likelihood(p, data, design)
+    se_direct = compute_jax_hessian_std_errors(obj, np.asarray(result.parameters, float))
+    assert se_direct is not None
+    np.testing.assert_allclose(
+        np.asarray(result.parameter_se, float), se_direct, rtol=1e-4
+    )
+
+
 def test_never_captured_history_contributes_zero():
     """The conditional Pradel likelihood ignores all-zero capture histories."""
     from pradel_jax.models.pradel import _pradel_individual_likelihood

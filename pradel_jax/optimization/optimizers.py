@@ -111,7 +111,25 @@ class OptimizationResult:
 
     @property
     def standard_errors(self) -> Optional[np.ndarray]:
-        """Standard errors computed from Hessian inverse."""
+        """Standard errors from the parameter covariance.
+
+        Preference order:
+          1. Exact autodiff Hessian (``jax.hessian`` of the objective) -> most
+             accurate observed-information standard errors.
+          2. Optimizer-provided Hessian inverse (scipy's low-rank ``hess_inv``).
+          3. Finite-difference Hessian fallback.
+        """
+        # 1. Exact autodiff Hessian, when a JAX-traceable objective is available.
+        if self._objective_function is not None and self.x is not None:
+            try:
+                from .hessian_utils import compute_jax_hessian_std_errors
+
+                se = compute_jax_hessian_std_errors(self._objective_function, self.x)
+                if se is not None and np.all(np.isfinite(se)) and np.all(se > 0):
+                    return se
+            except Exception:
+                pass  # fall through to the approximate paths below
+
         # Try direct use of provided Hessian inverse (if available)
         if self.hess_inv is not None:
             try:
@@ -486,6 +504,9 @@ class ScipyLBFGSOptimizer(BaseOptimizer):
                 hess_inv=getattr(scipy_result, "hess_inv", None),
                 optimization_time=time.time() - start_time,
                 strategy_used="scipy_lbfgs",
+                # Keep the JAX-traceable objective so standard errors can be
+                # computed from the exact jax.hessian (observed information).
+                _objective_function=objective,
             )
 
             logger.info(
@@ -609,6 +630,8 @@ class ScipySLSQPOptimizer(BaseOptimizer):
                 jac=getattr(scipy_result, "jac", None),
                 optimization_time=time.time() - start_time,
                 strategy_used="scipy_slsqp",
+                # Keep the JAX-traceable objective for exact jax.hessian SEs.
+                _objective_function=objective,
             )
 
             logger.info(f"SLSQP converged in {result.nit} iterations")

@@ -10,6 +10,7 @@ from pathlib import Path
 from ..data.adapters import load_data, DataContext
 from ..formulas import FormulaSpec, ParameterFormula, create_simple_spec, ParameterType
 from ..models import PradelModel, ModelResult, CaptureRecaptureModel
+import numpy as np
 from ..models.base import OptimizationStatus, ModelType
 from ..optimization.orchestrator import optimize_model
 from ..optimization.strategy import OptimizationStrategy
@@ -194,7 +195,21 @@ def fit_model(
         
         # Map optimization result to ModelResult fields
         status = OptimizationStatus.SUCCESS if opt_result.success else OptimizationStatus.FAILED
-        
+
+        # Standard errors from the exact jax.hessian covariance (falls back to
+        # finite differences inside the property if autodiff is unavailable).
+        try:
+            param_se = getattr(opt_result, "standard_errors", None)
+            if param_se is not None:
+                param_se = np.asarray(param_se)
+        except Exception:
+            param_se = None
+
+        try:
+            param_names = model.get_parameter_names(design_matrices)
+        except Exception:
+            param_names = None
+
         result = ModelResult(
             model_type=ModelType.PRADEL,
             formula_spec=formula,
@@ -203,6 +218,8 @@ def fit_model(
             parameters=opt_result.x,
             log_likelihood=-opt_result.fun,  # Convert back to log-likelihood from objective
             design_matrices=design_matrices,
+            parameter_se=param_se,
+            parameter_names=param_names,
             n_iterations=getattr(opt_result, 'nit', None),
             optimizer_used=optimization_result.strategy_used,
             fit_time=optimization_result.total_time,

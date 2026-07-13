@@ -80,19 +80,22 @@ def create_test_design_matrices(data_context):
             matrix=design_matrix,
             column_names=["intercept"],
             parameter_count=1,
-            has_intercept=True
+            has_intercept=True,
+            formula_string="~1"
         ),
         "p": DesignMatrixInfo(
             matrix=design_matrix,
-            column_names=["intercept"], 
+            column_names=["intercept"],
             parameter_count=1,
-            has_intercept=True
+            has_intercept=True,
+            formula_string="~1"
         ),
         "f": DesignMatrixInfo(
             matrix=design_matrix,
             column_names=["intercept"],
             parameter_count=1,
-            has_intercept=True
+            has_intercept=True,
+            formula_string="~1"
         )
     }
     
