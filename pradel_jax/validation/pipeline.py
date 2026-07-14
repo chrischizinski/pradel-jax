@@ -37,6 +37,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any, Union
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import multiprocessing as mp
 import logging
 import json
 
@@ -663,8 +664,11 @@ class ValidationPipeline:
 
         if self.config.performance.enable_multiprocessing:
             # Parallel execution
+            # Fork (Linux default) after JAX/XLA init deadlocks child processes;
+            # spawn re-imports cleanly instead.
             with ProcessPoolExecutor(
-                max_workers=self.config.performance.max_parallel_jobs
+                max_workers=self.config.performance.max_parallel_jobs,
+                mp_context=mp.get_context("spawn"),
             ) as executor:
                 futures = []
 

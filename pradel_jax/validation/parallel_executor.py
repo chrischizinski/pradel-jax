@@ -431,7 +431,11 @@ class ParallelValidationExecutor:
         # Create partial function with validation_function
         worker_func = partial(self._execute_single_task, validation_function)
 
-        with ProcessPoolExecutor(max_workers=self.optimal_workers) as executor:
+        # Fork (Linux default) after JAX/XLA init deadlocks child processes;
+        # spawn re-imports cleanly instead.
+        with ProcessPoolExecutor(
+            max_workers=self.optimal_workers, mp_context=mp.get_context("spawn")
+        ) as executor:
             # Submit all tasks
             future_to_task = {
                 executor.submit(worker_func, task): task for task in tasks

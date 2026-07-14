@@ -481,7 +481,13 @@ class ParallelOptimizer:
             ]
 
             # Submit batch to workers
-            with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
+            # JAX/XLA initializes native threads in the parent process; forking
+            # a process with that state already set up deadlocks on Linux
+            # (fork is the default there). Force spawn, which re-imports
+            # cleanly in the child instead of copying the parent's state.
+            with ProcessPoolExecutor(
+                max_workers=self.n_workers, mp_context=mp.get_context("spawn")
+            ) as executor:
                 future_to_spec = {
                     executor.submit(_fit_model_worker, args): args[0]
                     for args in worker_args
