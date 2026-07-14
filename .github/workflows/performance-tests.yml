@@ -28,7 +28,8 @@ env:
 jobs:
   performance-regression:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 20
+
     strategy:
       matrix:
         # Test on different Python versions for comprehensive coverage
@@ -203,7 +204,8 @@ jobs:
   memory-profiling:
     runs-on: ubuntu-latest
     needs: performance-regression
-    
+    timeout-minutes: 15
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -240,7 +242,8 @@ jobs:
   benchmark-comparison:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    
+    timeout-minutes: 20
+
     steps:
     - name: Checkout PR branch
       uses: actions/checkout@v4
