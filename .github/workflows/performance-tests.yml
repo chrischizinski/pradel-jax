@@ -30,21 +30,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    strategy:
-      matrix:
-        # Test on different Python versions for comprehensive coverage
-        python-version: ['3.9', '3.11']
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Need full history for performance comparison
     
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: ${{ env.PYTHON_VERSION }}
     
     - name: Cache pip dependencies
       uses: actions/cache@v4
@@ -68,9 +63,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: tests/benchmarks/performance_baselines.json
-        key: performance-baselines-${{ matrix.python-version }}-v1
+        key: performance-baselines-${{ env.PYTHON_VERSION }}-v1
         restore-keys: |
-          performance-baselines-${{ matrix.python-version }}-
+          performance-baselines-${{ env.PYTHON_VERSION }}-
     
     - name: Create baselines if missing
       run: |
@@ -105,7 +100,7 @@ jobs:
     - name: Upload performance report
       uses: actions/upload-artifact@v4
       with:
-        name: performance-report-py${{ matrix.python-version }}
+        name: performance-report-py${{ env.PYTHON_VERSION }}
         path: tests/benchmarks/regression_report.json
         retention-days: 30
     
@@ -149,7 +144,7 @@ jobs:
           if (fs.existsSync(path)) {
             const report = JSON.parse(fs.readFileSync(path, 'utf8'));
             
-            let comment = `## 🚀 Performance Test Results (Python ${{ matrix.python-version }})\n\n`;
+            let comment = `## 🚀 Performance Test Results (Python ${{ env.PYTHON_VERSION }})\n\n`;
             comment += `| Metric | Value |\n`;
             comment += `|--------|-------|\n`;
             comment += `| Total Tests | ${report.total_tests} |\n`;
@@ -192,7 +187,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: tests/benchmarks/performance_baselines.json
-        key: performance-baselines-${{ matrix.python-version }}-v1-${{ github.sha }}
+        key: performance-baselines-${{ env.PYTHON_VERSION }}-v1-${{ github.sha }}
     
     - name: Fail job if critical regressions detected
       if: steps.parse_results.outputs.regressions_detected == 'true'
