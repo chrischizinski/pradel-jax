@@ -23,7 +23,6 @@ from .time_varying import TimeVaryingDesignMatrixBuilder
 from ..core.exceptions import ModelSpecificationError, DataFormatError
 from ..utils.logging import get_logger
 
-
 logger = get_logger(__name__)
 
 
@@ -38,7 +37,9 @@ class DesignMatrixInfo:
     formula_string: str
 
 
-def _reject_time_varying(var_name: str, n_columns: int, allow_time_varying: bool) -> None:
+def _reject_time_varying(
+    var_name: str, n_columns: int, allow_time_varying: bool
+) -> None:
     """Refuse to flatten a time-varying covariate into time-constant parameters.
 
     A 2D covariate expands to one design column per occasion, but a model whose
@@ -85,6 +86,7 @@ class DesignMatrixBuilder:
         formula: ParameterFormula,
         data_context: Any,  # DataContext from data.adapters
         n_occasions: Optional[int] = None,
+        n_periods: Optional[int] = None,
     ) -> DesignMatrixInfo:
         """
         Build design matrix for a parameter formula.
@@ -93,9 +95,19 @@ class DesignMatrixBuilder:
             formula: ParameterFormula object
             data_context: DataContext with covariates
             n_occasions: Number of time occasions (for time-varying parameters)
+            n_periods: Length of this parameter's own time axis. ``phi`` and
+                ``f`` are indexed by interval (``n_occasions - 1``) while ``p``
+                is indexed by occasion (``n_occasions``), so the same covariate
+                is sliced to a different length depending on which parameter it
+                models. ``None`` means the caller wants a time-constant matrix
+                and is the default, because most models are time-constant.
 
         Returns:
-            DesignMatrixInfo with constructed matrix and metadata
+            DesignMatrixInfo with constructed matrix and metadata. The matrix is
+            ``(n_individuals, n_columns)`` for a time-constant formula and
+            ``(n_individuals, n_periods, n_columns)`` as soon as any term is
+            occasion-specific. The column count -- and therefore the number of
+            coefficients -- is the same either way.
         """
         self.logger.debug(
             f"Building design matrix for {formula.parameter.value}: {formula.formula_string}"
@@ -115,7 +127,7 @@ class DesignMatrixBuilder:
 
         for term in formula.terms:
             columns, names = self._build_term_columns(
-                term, data_context, n_individuals, n_occasions
+                term, data_context, n_individuals, n_occasions, n_periods
             )
             matrix_columns.extend(columns)
             column_names.extend(names)
@@ -131,8 +143,34 @@ class DesignMatrixBuilder:
                 ],
             )
 
-        # Combine columns into matrix
-        design_matrix = np.column_stack(matrix_columns)
+        # Combine columns into a matrix.  A time-constant column is
+        # (n_individuals,); an occasion-specific one is (n_individuals,
+        # n_periods).  If any column is occasion-specific the matrix gains a
+        # period axis and the time-constant columns are broadcast along it, so
+        # the coefficient vector is one value per column in both cases.  That is
+        # what makes "phi ~ tier" a single tier coefficient applied at whatever
+        # tier the individual held that year, rather than a separate coefficient
+        # per year -- the latter is "phi ~ tier * year", a different model.
+        if any(col.ndim == 2 for col in matrix_columns):
+            widths = {col.shape[1] for col in matrix_columns if col.ndim == 2}
+            if len(widths) != 1:
+                raise ModelSpecificationError(
+                    formula=(
+                        f"occasion-specific terms in '{formula.formula_string}' "
+                        f"disagree on the number of periods: {sorted(widths)}"
+                    ),
+                    parameter=formula.parameter.value,
+                )
+            width = widths.pop()
+            design_matrix = np.stack(
+                [
+                    col if col.ndim == 2 else np.repeat(col[:, None], width, axis=1)
+                    for col in matrix_columns
+                ],
+                axis=-1,
+            )
+        else:
+            design_matrix = np.column_stack(matrix_columns)
 
         # Convert to JAX array
         design_matrix_jax = jnp.array(design_matrix, dtype=jnp.float64)
@@ -151,7 +189,12 @@ class DesignMatrixBuilder:
         )
 
     def _build_term_columns(
-        self, term: Term, data_context: Any, n_individuals: int, n_occasions: int
+        self,
+        term: Term,
+        data_context: Any,
+        n_individuals: int,
+        n_occasions: int,
+        n_periods: Optional[int] = None,
     ) -> Tuple[List[np.ndarray], List[str]]:
         """
         Build design matrix columns for a single term.
@@ -161,21 +204,24 @@ class DesignMatrixBuilder:
             data_context: DataContext with covariates
             n_individuals: Number of individuals
             n_occasions: Number of occasions
+            n_periods: Length of the parameter's time axis, or None for a
+                time-constant matrix. See :meth:`build_matrix`.
 
         Returns:
-            Tuple of (column arrays, column names)
+            Tuple of (column arrays, column names). Each column is either
+            (n_individuals,) or (n_individuals, n_periods).
         """
         if isinstance(term, InterceptTerm):
             return self._build_intercept_columns(n_individuals, n_occasions)
 
         elif isinstance(term, VariableTerm):
             return self._build_variable_columns(
-                term, data_context, n_individuals, n_occasions
+                term, data_context, n_individuals, n_occasions, n_periods
             )
 
         elif isinstance(term, InteractionTerm):
             return self._build_interaction_columns(
-                term, data_context, n_individuals, n_occasions
+                term, data_context, n_individuals, n_occasions, n_periods
             )
 
         elif isinstance(term, FunctionTerm):
@@ -204,12 +250,42 @@ class DesignMatrixBuilder:
         intercept_col = np.ones(n_individuals, dtype=np.float64)
         return [intercept_col], ["(Intercept)"]
 
+    def _slice_to_periods(
+        self, var_name: str, data: np.ndarray, n_periods: Optional[int]
+    ) -> np.ndarray:
+        """Align an (n_individuals, T) covariate to a parameter's time axis.
+
+        The value used for interval t is the one recorded at its *starting*
+        occasion t.  This is the MARK convention for time-varying individual
+        covariates: survival over 2019->2020 is driven by the status held in
+        2019, because that is what is known when the interval begins.  Detection
+        at occasion t uses occasion t directly, so ``p`` simply takes one more
+        period than ``phi`` and ``f``.
+        """
+        width = data.shape[1]
+        if n_periods is None:
+            return np.asarray(data, dtype=np.float64)
+        if width < n_periods:
+            raise ModelSpecificationError(
+                formula=(
+                    f"covariate '{var_name}' is recorded for {width} occasions "
+                    f"but this parameter is indexed over {n_periods} periods"
+                ),
+                parameter=var_name,
+                suggestions=[
+                    "Provide the covariate for every occasion in the study",
+                    "phi and f need n_occasions - 1 values; p needs n_occasions",
+                ],
+            )
+        return np.asarray(data[:, :n_periods], dtype=np.float64)
+
     def _build_variable_columns(
         self,
         term: VariableTerm,
         data_context: Any,
         n_individuals: int,
         n_occasions: int,
+        n_periods: Optional[int] = None,
     ) -> Tuple[List[np.ndarray], List[str]]:
         """Build columns for a simple variable term."""
         var_name = term.variable_name
@@ -240,7 +316,9 @@ class DesignMatrixBuilder:
                 categories = metadata.get(f"{var_name}_categories", [])
             categorical_data = np.array(data_context.covariates[var_name])
 
-            def _resolve_category_codes(labels: List[Any], raw_data: np.ndarray) -> np.ndarray:
+            def _resolve_category_codes(
+                labels: List[Any], raw_data: np.ndarray
+            ) -> np.ndarray:
                 if not labels:
                     return np.array([], dtype=float)
 
@@ -252,15 +330,16 @@ class DesignMatrixBuilder:
                 expected = np.arange(len(labels), dtype=float)
                 if flattened.size:
                     unique_vals = np.unique(flattened)
-                    if (
-                        len(unique_vals) == len(labels)
-                        and np.allclose(np.sort(unique_vals), expected)
+                    if len(unique_vals) == len(labels) and np.allclose(
+                        np.sort(unique_vals), expected
                     ):
                         return expected
 
                 # Try to coerce labels to numeric codes
                 try:
-                    numeric_labels = np.array([float(label) for label in labels], dtype=float)
+                    numeric_labels = np.array(
+                        [float(label) for label in labels], dtype=float
+                    )
                     if numeric_labels.shape[0] == len(labels):
                         return numeric_labels
                 except (TypeError, ValueError):
@@ -270,27 +349,29 @@ class DesignMatrixBuilder:
 
             category_codes = _resolve_category_codes(categories, categorical_data)
 
-            # Time-varying categorical (2D): create per-occasion dummies
+            # Time-varying categorical (2D): one dummy per non-reference
+            # level, each varying over the parameter's periods.  There is
+            # deliberately NOT one dummy per (level, occasion) pair: that would
+            # be the level-by-time interaction, and it is not what "~ tier"
+            # asks for.
             if categorical_data.ndim == 2:
                 _reject_time_varying(
                     var_name, categorical_data.shape[1], self.allow_time_varying
                 )
+                codes = self._slice_to_periods(var_name, categorical_data, n_periods)
                 if len(categories) <= 1:
-                    # Single level - intercept-like per occasion
-                    cols = [np.ones(n_individuals, dtype=np.float64) for _ in range(categorical_data.shape[1])]
-                    names = [f"{var_name}_t{t}" for t in range(categorical_data.shape[1])]
-                    return cols, names
+                    # Single level - intercept-like, and therefore constant
+                    return (
+                        [np.ones(codes.shape, dtype=np.float64)],
+                        [var_name],
+                    )
                 columns = []
                 names = []
-                # Assume codes correspond to indices in categories; drop first level
-                for t in range(categorical_data.shape[1]):
-                    codes_t = categorical_data[:, t].astype(float)
-                    for code_value, category in zip(
-                        category_codes[1:], categories[1:]
-                    ):
-                        dummy_col = np.isclose(codes_t, code_value).astype(np.float64)
-                        columns.append(dummy_col)
-                        names.append(f"{var_name}_{category}_t{t}")
+                # Codes correspond to entries in `categories`; drop the first
+                # level as the reference for identifiability.
+                for code_value, category in zip(category_codes[1:], categories[1:]):
+                    columns.append(np.isclose(codes, code_value).astype(np.float64))
+                    names.append(f"{var_name}_{category}")
                 return columns, names
             else:
                 categorical_codes = categorical_data.astype(float)
@@ -324,34 +405,35 @@ class DesignMatrixBuilder:
                 column = covariate_data.astype(np.float64)
                 return [column], [var_name]
             elif covariate_data.ndim == 2:
-                # Time-varying numeric covariate: expand to per-occasion columns
+                # Time-varying numeric covariate: a single coefficient applied
+                # to whatever value the individual held in each period.
                 _reject_time_varying(
                     var_name, covariate_data.shape[1], self.allow_time_varying
                 )
                 self.logger.info(f"Processing time-varying covariate: {var_name}")
-                T = covariate_data.shape[1]
-                columns = []
-                names = []
-                K = min(T, n_occasions)
-                for t in range(K):
-                    col = covariate_data[:, t].astype(np.float64)
-                    if np.any(np.isnan(col)):
-                        # FIXME: unreachable while the guard above is in force,
-                        # and it must not become reachable for Tier. Tier is a
-                        # state (0 = inactive/not registered, 1 = Tier I,
-                        # 2 = Tier II), so a row mean invents states that were
-                        # never occupied - "tier 1.4" is not a thing. The
-                        # agreed handling is an explicit inactive level for
-                        # 0/missing rather than imputation; wire that in with
-                        # the occasion-specific parameter work before passing
-                        # allow_time_varying=True for Tier.
-                        row_means = np.nanmean(covariate_data, axis=1)
-                        col = np.where(np.isnan(col), row_means, col)
-                        overall = float(np.nanmean(covariate_data))
-                        col = np.where(np.isnan(col), overall, col).astype(np.float64)
-                    columns.append(col)
-                    names.append(f"{var_name}_t{t}")
-                return columns, names
+                column = self._slice_to_periods(var_name, covariate_data, n_periods)
+                if np.any(np.isnan(column)):
+                    # Deliberately not imputed.  The row mean that used to stand
+                    # here invents values never observed, which for a state-like
+                    # variable is meaningless -- "tier 1.4" is not a thing.  A
+                    # state variable belongs on the categorical path, where
+                    # missing/inactive is an explicit level; a genuinely
+                    # continuous covariate has to be completed by the caller,
+                    # who knows what the gap means.
+                    raise DataFormatError(
+                        specific_issue=(
+                            f"time-varying covariate '{var_name}' has missing "
+                            f"values, and this model will not impute them"
+                        ),
+                        suggestions=[
+                            "Fill the gaps explicitly with a value that means "
+                            "something in this study",
+                            "For state-like variables (e.g. tier) declare the "
+                            "covariate categorical so missing becomes its own "
+                            "level",
+                        ],
+                    )
+                return [column], [var_name]
             else:
                 raise DataFormatError(
                     specific_issue=f"Covariate '{var_name}' has unexpected shape: {covariate_data.shape}",
@@ -368,6 +450,7 @@ class DesignMatrixBuilder:
         data_context: Any,
         n_individuals: int,
         n_occasions: int,
+        n_periods: Optional[int] = None,
     ) -> Tuple[List[np.ndarray], List[str]]:
         """Build columns for interaction terms."""
         # Get all variable columns
@@ -378,7 +461,7 @@ class DesignMatrixBuilder:
             # Create variable term and get its columns
             var_term = VariableTerm(var_name)
             columns, names = self._build_variable_columns(
-                var_term, data_context, n_individuals, n_occasions
+                var_term, data_context, n_individuals, n_occasions, n_periods
             )
             var_columns.extend(columns)
             var_names.extend(names)
@@ -393,10 +476,19 @@ class DesignMatrixBuilder:
                 ],
             )
 
-        # Element-wise multiplication for interaction
-        interaction_col = var_columns[0].copy()
+        # Element-wise multiplication for interaction.  A time-constant
+        # factor multiplied by an occasion-specific one is occasion-specific, so
+        # the 1D operand is broadcast along the period axis.
+        width = next((c.shape[1] for c in var_columns if c.ndim == 2), None)
+
+        def _align(col: np.ndarray) -> np.ndarray:
+            if width is None or col.ndim == 2:
+                return col
+            return np.repeat(col[:, None], width, axis=1)
+
+        interaction_col = _align(var_columns[0]).copy()
         for col in var_columns[1:]:
-            interaction_col = interaction_col * col
+            interaction_col = interaction_col * _align(col)
 
         interaction_name = ":".join(term.variables)
 
@@ -665,6 +757,7 @@ def build_design_matrix(
     data_context: Any,
     n_occasions: Optional[int] = None,
     allow_time_varying: bool = False,
+    n_periods: Optional[int] = None,
 ) -> DesignMatrixInfo:
     """
     Convenience function to build design matrix.
@@ -673,12 +766,14 @@ def build_design_matrix(
         formula: ParameterFormula object
         data_context: DataContext with covariates
         n_occasions: Number of time occasions
-        allow_time_varying: Permit 2D covariates to expand into per-occasion
-            columns. Only safe for models that index parameters by occasion;
-            see _reject_time_varying.
+        allow_time_varying: Permit 2D covariates to become occasion-specific
+            design columns. Only safe for models that index parameters by
+            occasion; see _reject_time_varying.
+        n_periods: Length of this parameter's time axis. See
+            :meth:`DesignMatrixBuilder.build_matrix`.
 
     Returns:
         DesignMatrixInfo with constructed matrix
     """
     builder = DesignMatrixBuilder(allow_time_varying=allow_time_varying)
-    return builder.build_matrix(formula, data_context, n_occasions)
+    return builder.build_matrix(formula, data_context, n_occasions, n_periods)

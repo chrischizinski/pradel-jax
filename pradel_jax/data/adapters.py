@@ -242,10 +242,23 @@ class DataFormatAdapter(ABC):
                 tier_matrix = np.column_stack(
                     [covariates[col] for col in tier_series]
                 ).astype(np.float64)
+                # Tier is a state, not a quantity: 0 = inactive/not
+                # registered, 1 = Tier I, 2 = Tier II.  A year with no record is
+                # a year the hunter was not registered, which is exactly what 0
+                # already means, so missing collapses into the inactive level
+                # rather than being imputed.  Averaging would invent states -
+                # there is no "tier 1.4" - and dropping the row would discard a
+                # hunter for the years before the programme existed.
+                tier_matrix = np.where(np.isnan(tier_matrix), 0.0, tier_matrix)
                 covariates["tier"] = tier_matrix
                 covariates["tier_is_time_varying"] = True
-                # Mark as categorical and provide categories from unique codes
-                codes = tier_matrix[~np.isnan(tier_matrix)].astype(int)
+                # Mark as categorical and provide categories from unique codes.
+                # 0 sorts first, so whenever an inactive year occurs anywhere in
+                # the data the inactive state becomes the reference level and
+                # the Tier I / Tier II coefficients read as contrasts against
+                # "not registered".  When no inactive year occurs the level is
+                # absent, which keeps the design matrix full rank.
+                codes = tier_matrix.astype(int)
                 unique_codes = np.unique(codes)
                 # Build category labels as strings of codes
                 categories = [str(int(c)) for c in unique_codes]
@@ -310,7 +323,6 @@ def _is_categorical_column(series: pd.Series) -> bool:
     on the numeric side, since they cast cleanly to 0.0/1.0.
     """
     return not pd.api.types.is_numeric_dtype(series)
-
 
 
 class RMarkFormatAdapter(DataFormatAdapter):

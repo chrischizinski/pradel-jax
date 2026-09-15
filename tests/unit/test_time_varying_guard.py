@@ -1,12 +1,19 @@
-"""The design matrix must refuse to flatten time-varying covariates.
+"""A time-varying covariate is either indexed by occasion or refused.
 
-A 2D covariate expands to one column per occasion, but a model whose
-parameters are a single value per individual then collapses those columns into
-one linear predictor.  Before the guard this converged and reported an AIC, so
-an "annual tier" model would have ranked against the others while actually
-fitting one time-constant survival driven additively by every year at once.
-These tests exist so that failure stays loud until parameters are genuinely
-indexed by occasion.
+A 2D covariate has one value per occasion, but a model whose parameters take a
+single value per individual has nowhere to put them.  The old behaviour was to
+expand the covariate into one design column per occasion and let the linear
+predictor add them all together, which converged and reported an AIC -- so an
+"annual tier" model ranked against the others while actually fitting one
+time-constant survival driven additively by every year at once.
+
+Two things now stand between that failure and a user.  The design-matrix builder
+refuses by default, so any caller that has not thought about occasions gets an
+error rather than a plausible number.  And `PradelModel` opts in, because its
+parameters really are indexed by occasion -- see
+tests/unit/test_occasion_specific_parameters.py for what that indexing has to
+satisfy.  These tests pin both halves: the refusal must stay the default, and
+the opt-in must produce a period axis rather than the old flattening.
 """
 
 import pandas as pd
@@ -45,13 +52,18 @@ def test_adapter_still_assembles_the_time_varying_matrix(tmp_path):
     assert data.covariates["tier"].shape == (6, 4)
 
 
-def test_time_varying_covariate_is_rejected_not_flattened(tmp_path):
+def test_builders_that_have_not_opted_in_still_refuse(tmp_path):
+    """The refusal is the default, and it has to name what went wrong.
+
+    `allow_time_varying` defaults to False precisely because the failure it
+    prevents is silent.  Any future model that forgets to index by occasion
+    should hit this rather than fit a collapsed covariate.
+    """
     data = _annual_tier_context(tmp_path)
-    model = PradelModel()
     spec = pj.create_formula_spec(phi="~1 + tier", p="~1", f="~1")
 
     with pytest.raises(ModelSpecificationError) as excinfo:
-        model.build_design_matrices(spec, data)
+        build_design_matrix(spec.phi, data)
 
     message = str(excinfo.value)
     # The message has to name the covariate and the collapse, or it will not
@@ -72,17 +84,27 @@ def test_time_constant_covariate_is_unaffected(tmp_path):
     assert design["phi"].column_names == ["(Intercept)", "tier_2016"]
 
 
-def test_opt_in_restores_per_occasion_expansion(tmp_path):
-    """Occasion-indexed builders keep the expansion via allow_time_varying.
+def test_pradel_opts_in_and_gets_a_period_axis_not_more_columns(tmp_path):
+    """The opt-in is what the guard was holding the door open for.
 
-    This is the seam the occasion-specific parameter work will use; without it
-    the guard would have to be deleted rather than switched on.
+    The distinction that matters is where the occasions live.  They belong on
+    their own axis of the design matrix, so the model keeps one tier
+    coefficient applied at whatever tier the hunter held that year.  The old
+    expansion put them in the *columns*, which silently turned `~ tier` into a
+    tier-by-year model collapsed back down to one number.
     """
     data = _annual_tier_context(tmp_path)
+    model = PradelModel()
     spec = pj.create_formula_spec(phi="~1 + tier", p="~1", f="~1")
 
-    design = build_design_matrix(spec.phi, data, allow_time_varying=True)
+    design = model.build_design_matrices(spec, data)
+    phi = design["phi"]
 
-    # One dummy per occasion for the non-reference tier level, plus intercept.
-    assert design.matrix.shape[1] > 2
-    assert any(name.endswith("_t3") for name in design.column_names)
+    # 6 individuals, 3 intervals between 4 occasions, intercept + one dummy for
+    # the single non-reference tier level present in this data.
+    assert phi.matrix.shape == (6, 3, 2)
+    assert phi.parameter_count == 2
+    assert not any("_t" in name for name in phi.column_names), (
+        "per-occasion columns are the old flattening; occasions belong on the "
+        "period axis"
+    )

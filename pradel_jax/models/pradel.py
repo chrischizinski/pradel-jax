@@ -288,9 +288,7 @@ def _pradel_individual_likelihood_tv(
 
     # Intervals [e, l) carry both the survival and the seniority product.
     interval_mask = (intervals >= first_capture) & (intervals < last_capture)
-    survival_seniority = jnp.sum(
-        jnp.where(interval_mask, log_phi + log_gamma, 0.0)
-    )
+    survival_seniority = jnp.sum(jnp.where(interval_mask, log_phi + log_gamma, 0.0))
 
     # chi[j] = P(never detected after occasion j), backwards from chi[T-1] = 1:
     #   chi[j] = (1 - phi[j]) + phi[j] (1 - p[j+1]) chi[j+1]
@@ -298,9 +296,7 @@ def _pradel_individual_likelihood_tv(
         chi_t = (1.0 - phi[t]) + phi[t] * (1.0 - p[t + 1]) * chi_next
         return chi_t, chi_t
 
-    _, chi_rev = jax.lax.scan(
-        chi_step, 1.0, jnp.arange(n_occasions - 2, -1, -1)
-    )
+    _, chi_rev = jax.lax.scan(chi_step, 1.0, jnp.arange(n_occasions - 2, -1, -1))
     # scan ran from t = T-2 down to 0, so chi_rev is reversed relative to t.
     chi_all = jnp.concatenate([chi_rev[::-1], jnp.ones((1,))])
 
@@ -348,6 +344,59 @@ def _pradel_vectorized_likelihood(
 
     # Sum across all individuals
     return jnp.sum(individual_likelihoods)
+
+
+def _linear_predictor(design_matrix: jnp.ndarray, coefficients: jnp.ndarray):
+    """Apply a coefficient vector to a design matrix of either rank.
+
+    A time-constant design matrix is ``(n_individuals, n_columns)`` and gives one
+    value per individual.  An occasion-specific one carries an extra period axis,
+    ``(n_individuals, n_periods, n_columns)``, and gives one value per individual
+    per period.  The coefficient vector is the same length in both cases: the
+    period structure lives in the design matrix, not in the parameters, so a
+    covariate that changes over time still costs exactly one coefficient.
+    """
+    if design_matrix.ndim == 3:
+        return jnp.einsum("itk,k->it", design_matrix, coefficients)
+    return design_matrix @ coefficients
+
+
+def _as_periods(values: jnp.ndarray, n_periods: int) -> jnp.ndarray:
+    """Give a per-individual value a period axis by repeating it.
+
+    Used when some parameters of a model are occasion-specific and others are
+    not -- e.g. ``phi ~ tier, p ~ 1`` -- so that the likelihood always sees
+    arrays of the same rank.
+    """
+    if values.ndim == 2:
+        return values
+    return jnp.repeat(values[:, None], n_periods, axis=1)
+
+
+@jax.jit
+def _pradel_vectorized_likelihood_tv(
+    phi: jnp.ndarray, p: jnp.ndarray, f: jnp.ndarray, capture_matrix: jnp.ndarray
+) -> float:
+    """Occasion-specific counterpart of :func:`_pradel_vectorized_likelihood`."""
+    individual_likelihoods = jax.vmap(_pradel_individual_likelihood_tv)(
+        capture_matrix, phi, p, f
+    )
+    return jnp.sum(individual_likelihoods)
+
+
+@jax.jit
+def _pradel_weighted_vectorized_likelihood_tv(
+    phi: jnp.ndarray,
+    p: jnp.ndarray,
+    f: jnp.ndarray,
+    capture_matrix: jnp.ndarray,
+    frequency: jnp.ndarray,
+) -> float:
+    """Occasion-specific counterpart of the grouped/weighted likelihood."""
+    individual_likelihoods = jax.vmap(_pradel_individual_likelihood_tv)(
+        capture_matrix, phi, p, f
+    )
+    return jnp.sum(individual_likelihoods * frequency)
 
 
 @jax.jit
@@ -411,6 +460,16 @@ class PradelModel(CaptureRecaptureModel):
         # Get number of occasions for time-varying parameters
         n_occasions = data_context.n_occasions
 
+        # phi and f describe what happens *between* occasions, so they are
+        # indexed by interval; p describes detection *at* an occasion. A
+        # covariate feeding phi is therefore sliced one period shorter than the
+        # same covariate feeding p.
+        n_periods = {
+            "phi": n_occasions - 1,
+            "f": n_occasions - 1,
+            "p": n_occasions,
+        }
+
         design_matrices = {}
 
         # Build design matrix for each parameter
@@ -425,9 +484,17 @@ class PradelModel(CaptureRecaptureModel):
                     ],
                 )
 
-            # For time-varying parameters, we might need different handling
-            # For now, treat all as individual-level
-            design_info = build_design_matrix(param_formula, data_context)
+            # A formula that mentions only time-constant covariates still
+            # produces the same (n_individuals, n_columns) matrix as before.
+            # allow_time_varying only decides whether a 2D covariate is allowed
+            # to become an occasion-specific column instead of being rejected.
+            design_info = build_design_matrix(
+                param_formula,
+                data_context,
+                n_occasions=n_occasions,
+                allow_time_varying=True,
+                n_periods=n_periods[param_name],
+            )
             design_matrices[param_name] = design_info
 
             self.logger.debug(
@@ -635,9 +702,9 @@ class PradelModel(CaptureRecaptureModel):
         X_f = design_matrices["f"].matrix
 
         # Calculate linear predictors
-        eta_phi = X_phi @ param_split["phi"]
-        eta_p = X_p @ param_split["p"]
-        eta_f = X_f @ param_split["f"]
+        eta_phi = _linear_predictor(X_phi, param_split["phi"])
+        eta_p = _linear_predictor(X_p, param_split["p"])
+        eta_f = _linear_predictor(X_f, param_split["f"])
 
         # Apply link functions
         phi = inv_logit(eta_phi)  # Survival probability (0-1)
@@ -648,11 +715,32 @@ class PradelModel(CaptureRecaptureModel):
         capture_matrix = data_context.capture_matrix
         n_individuals, n_occasions = capture_matrix.shape
 
+        # If any one of the three is occasion-specific the whole model is, and
+        # the others are repeated across periods so that every array has a time
+        # axis.  A model where none of them varies keeps the original scalar
+        # path untouched, which is what makes this change inert for every
+        # time-constant model already fitted.
+        time_varying = any(arr.ndim == 2 for arr in (phi, p, f))
+        if time_varying:
+            phi = _as_periods(phi, n_occasions - 1)
+            f = _as_periods(f, n_occasions - 1)
+            p = _as_periods(p, n_occasions)
+
         # OPTIMIZED: Use JIT-compiled vectorized likelihood calculation
         if data_context.frequency is None:
-            base_likelihood = _pradel_vectorized_likelihood(phi, p, f, capture_matrix)
+            likelihood_fn = (
+                _pradel_vectorized_likelihood_tv
+                if time_varying
+                else _pradel_vectorized_likelihood
+            )
+            base_likelihood = likelihood_fn(phi, p, f, capture_matrix)
         else:
-            base_likelihood = _pradel_weighted_vectorized_likelihood(
+            weighted_fn = (
+                _pradel_weighted_vectorized_likelihood_tv
+                if time_varying
+                else _pradel_weighted_vectorized_likelihood
+            )
+            base_likelihood = weighted_fn(
                 phi, p, f, capture_matrix, data_context.frequency
             )
 
@@ -660,6 +748,12 @@ class PradelModel(CaptureRecaptureModel):
         # row must be counted as many times as it was observed.  Otherwise the
         # two backends would return different values for the same model.
         weights = data_context.frequency
+        if time_varying and weights is not None:
+            # phi/p/f now carry a period axis, so the per-row frequency has to
+            # broadcast along it.  The penalty is then applied once per
+            # (individual, occasion), which is once per parameter value -- the
+            # same rule as before, just with more parameter values.
+            weights = weights.reshape(-1, 1)
 
         # Apply a soft Beta prior to keep probabilities away from the boundaries.
         if self.boundary_prior_strength > 0.0:
@@ -729,7 +823,10 @@ class PradelModel(CaptureRecaptureModel):
             design_matrices: Design matrices for each parameter
 
         Returns:
-            Array of lambda values (one per individual)
+            Array of lambda values: one per individual for a time-constant
+            model, or one per individual per interval, shape
+            ``(n_individuals, n_occasions - 1)``, when phi or f is
+            occasion-specific.
         """
         # Split parameters by type
         param_split = self._split_parameters(parameters, design_matrices)
@@ -739,8 +836,8 @@ class PradelModel(CaptureRecaptureModel):
         X_f = design_matrices["f"].matrix
 
         # Calculate linear predictors
-        eta_phi = X_phi @ param_split["phi"]
-        eta_f = X_f @ param_split["f"]
+        eta_phi = _linear_predictor(X_phi, param_split["phi"])
+        eta_f = _linear_predictor(X_f, param_split["f"])
 
         # Apply link functions
         phi = inv_logit(eta_phi)  # Survival probability (0-1)
@@ -799,9 +896,9 @@ class PradelModel(CaptureRecaptureModel):
         X_f = design_matrices["f"].matrix
 
         # Calculate linear predictors
-        eta_phi = X_phi @ param_split["phi"]
-        eta_p = X_p @ param_split["p"]
-        eta_f = X_f @ param_split["f"]
+        eta_phi = _linear_predictor(X_phi, param_split["phi"])
+        eta_p = _linear_predictor(X_p, param_split["p"])
+        eta_f = _linear_predictor(X_f, param_split["f"])
 
         # Apply link functions to get probabilities/rates
         phi = inv_logit(eta_phi)  # Survival probability (0-1)
@@ -877,12 +974,26 @@ class PradelModel(CaptureRecaptureModel):
         X_p = design_matrices["p"].matrix
 
         # Calculate linear predictors
-        eta_phi = X_phi @ param_split["phi"]
-        eta_p = X_p @ param_split["p"]
+        eta_phi = _linear_predictor(X_phi, param_split["phi"])
+        eta_p = _linear_predictor(X_p, param_split["p"])
 
         # Apply link functions
         phi = inv_logit(eta_phi)  # Survival probability
         p = inv_logit(eta_p)  # Detection probability
+
+        if phi.ndim == 2 or p.ndim == 2:
+            # The cumulative-survival shortcut below raises phi to the power t,
+            # which is only the survival to occasion t when phi is the same in
+            # every interval.  With occasion-specific rates it has to become a
+            # running product, and the right place for that is the chi/xi
+            # recursion the likelihood already uses.  Refuse rather than return
+            # a number that looks plausible and is not.
+            raise NotImplementedError(
+                "predict_capture_probabilities does not yet support "
+                "occasion-specific phi or p; its cumulative-survival term "
+                "assumes a constant rate. Use log_likelihood/calculate_lambda, "
+                "which are occasion-aware."
+            )
 
         # Calculate capture probabilities for each occasion
         n_individuals, n_occasions = data_context.capture_matrix.shape
