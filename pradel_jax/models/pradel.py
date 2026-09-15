@@ -231,6 +231,103 @@ def _pradel_individual_likelihood(
 
 
 @jax.jit
+def _pradel_individual_likelihood_tv(
+    capture_history: jnp.ndarray,
+    phi: jnp.ndarray,
+    p: jnp.ndarray,
+    f: jnp.ndarray,
+) -> float:
+    """Pradel individual log-likelihood with occasion-specific rates.
+
+    The same temporal-symmetry likelihood as
+    :func:`_pradel_individual_likelihood`, but with per-interval survival and
+    recruitment and per-occasion detection. Reduces to that function exactly
+    when the inputs are constant, which is how it is tested.
+
+    The scalar version can use the closed form in :func:`_affine_iterate` for
+    the two tail probabilities because the affine recursion
+    ``x <- (1-rate) + rate(1-p)x`` has a constant coefficient. With rates that
+    vary by occasion there is no such closed form, so chi and xi are evaluated
+    as the recursions they actually are, with ``lax.scan``.
+
+    Args:
+        capture_history: Binary array of length T (1=captured).
+        phi: Survival per interval, length T-1. ``phi[t]`` covers the interval
+            from occasion t to t+1.
+        p: Detection per occasion, length T.
+        f: Per-capita recruitment per interval, length T-1, aligned with phi.
+
+    Returns:
+        Log-likelihood contribution. Never-captured individuals contribute 0,
+        as they are outside the conditional likelihood.
+    """
+    n_occasions = capture_history.shape[0]
+    epsilon = 1e-12
+
+    total_captures = jnp.sum(capture_history)
+    indices = jnp.arange(n_occasions)
+    intervals = jnp.arange(n_occasions - 1)
+
+    first_capture = jnp.min(jnp.where(capture_history == 1, indices, n_occasions))
+    last_capture = jnp.max(jnp.where(capture_history == 1, indices, -1))
+
+    lambda_pop = phi + f
+    gamma = phi / jnp.maximum(lambda_pop, epsilon)
+
+    log_p = jnp.log(jnp.maximum(p, epsilon))
+    log_1mp = jnp.log(jnp.maximum(1.0 - p, epsilon))
+    log_phi = jnp.log(jnp.maximum(phi, epsilon))
+    log_gamma = jnp.log(jnp.maximum(gamma, epsilon))
+
+    det_logprob = capture_history * log_p + (1.0 - capture_history) * log_1mp
+
+    fwd_mask = (indices > first_capture) & (indices <= last_capture)
+    rev_mask = (indices >= first_capture) & (indices < last_capture)
+    det_forward = jnp.sum(jnp.where(fwd_mask, det_logprob, 0.0))
+    det_reverse = jnp.sum(jnp.where(rev_mask, det_logprob, 0.0))
+
+    # Intervals [e, l) carry both the survival and the seniority product.
+    interval_mask = (intervals >= first_capture) & (intervals < last_capture)
+    survival_seniority = jnp.sum(
+        jnp.where(interval_mask, log_phi + log_gamma, 0.0)
+    )
+
+    # chi[j] = P(never detected after occasion j), backwards from chi[T-1] = 1:
+    #   chi[j] = (1 - phi[j]) + phi[j] (1 - p[j+1]) chi[j+1]
+    def chi_step(chi_next, t):
+        chi_t = (1.0 - phi[t]) + phi[t] * (1.0 - p[t + 1]) * chi_next
+        return chi_t, chi_t
+
+    _, chi_rev = jax.lax.scan(
+        chi_step, 1.0, jnp.arange(n_occasions - 2, -1, -1)
+    )
+    # scan ran from t = T-2 down to 0, so chi_rev is reversed relative to t.
+    chi_all = jnp.concatenate([chi_rev[::-1], jnp.ones((1,))])
+
+    # xi[j] = P(never detected before occasion j), forwards from xi[0] = 1:
+    #   xi[j] = (1 - gamma[j-1]) + gamma[j-1] (1 - p[j-1]) xi[j-1]
+    def xi_step(xi_prev, t):
+        xi_t = (1.0 - gamma[t]) + gamma[t] * (1.0 - p[t]) * xi_prev
+        return xi_t, xi_t
+
+    _, xi_tail = jax.lax.scan(xi_step, 1.0, intervals)
+    xi_all = jnp.concatenate([jnp.ones((1,)), xi_tail])
+
+    xi = xi_all[first_capture]
+    chi = chi_all[last_capture]
+
+    captured_ll = (
+        survival_seniority
+        + det_forward
+        + det_reverse
+        + jnp.log(jnp.maximum(xi, epsilon))
+        + jnp.log(jnp.maximum(chi, epsilon))
+    )
+
+    return jnp.where(total_captures > 0, captured_ll, 0.0)
+
+
+@jax.jit
 def _pradel_vectorized_likelihood(
     phi: jnp.ndarray, p: jnp.ndarray, f: jnp.ndarray, capture_matrix: jnp.ndarray
 ) -> float:
