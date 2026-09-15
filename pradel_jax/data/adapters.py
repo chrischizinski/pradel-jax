@@ -279,6 +279,20 @@ class DataFormatAdapter(ABC):
         )
 
 
+def _is_categorical_column(series: pd.Series) -> bool:
+    """True for any column that is not numeric, so must be dummy-coded.
+
+    Tested by asking whether the column is numeric rather than whether it is
+    object dtype. Newer pandas infers text columns as StringDtype (python- or
+    pyarrow-backed) instead of object, so an ``== "object"`` check silently
+    routes them to the numeric branch and blows up on the first value:
+    ``ValueError: could not convert string to float: 'Female'``. Booleans stay
+    on the numeric side, since they cast cleanly to 0.0/1.0.
+    """
+    return not pd.api.types.is_numeric_dtype(series)
+
+
+
 class RMarkFormatAdapter(DataFormatAdapter):
     """Adapter for RMark-style data format (ch column + covariates)."""
 
@@ -342,7 +356,7 @@ class RMarkFormatAdapter(DataFormatAdapter):
         covariates = {}
 
         for col in covariate_cols:
-            if data[col].dtype == "object" or str(data[col].dtype) == "category":
+            if _is_categorical_column(data[col]):
                 # Store categorical variable as-is, design matrix builder will handle dummy variables
                 # Convert to numeric codes for easier processing
                 categorical_data = pd.Categorical(data[col])
@@ -371,9 +385,7 @@ class RMarkFormatAdapter(DataFormatAdapter):
         covariate_info = {}
 
         for col in covariate_cols:
-            is_categorical = (
-                data[col].dtype == "object" or str(data[col].dtype) == "category"
-            )
+            is_categorical = _is_categorical_column(data[col])
 
             if is_categorical:
                 # Create info for dummy variables
@@ -508,10 +520,7 @@ class GenericFormatAdapter(DataFormatAdapter):
         covariates = {}
 
         for col in covariate_cols:
-            if (
-                data_processed[col].dtype == "object"
-                or str(data_processed[col].dtype) == "category"
-            ):
+            if _is_categorical_column(data_processed[col]):
                 # Store categorical variable as-is, design matrix builder will handle dummy variables
                 # Convert to numeric codes for easier processing
                 categorical_data = pd.Categorical(data_processed[col])
@@ -551,9 +560,7 @@ class GenericFormatAdapter(DataFormatAdapter):
         covariate_info = {}
 
         for col in covariate_cols:
-            is_categorical = (
-                data[col].dtype == "object" or str(data[col].dtype) == "category"
-            )
+            is_categorical = _is_categorical_column(data[col])
 
             if is_categorical:
                 levels = data[col].unique().tolist()

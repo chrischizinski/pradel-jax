@@ -99,6 +99,55 @@
 **/validation_scripts/ssh_*.py
 
 # =============================================================================
+# DENY-BY-DEFAULT FOR data/  -- the keyword rules above are not sufficient
+# =============================================================================
+# The rules above are a filename-keyword denylist, which fails open: anything
+# whose name does not contain a listed keyword sails through. Verified failures
+# at the time this block was added -- these were NOT ignored:
+#
+#   NE_encounter_histories_nameDOB_2016_2025.xlsx   <- the real NE workbook
+#   SD_encounter_histories_IDprimary_2016_2025.xlsx <- the real SD workbook
+#   participation.parquet   raw_extract.dta   hip_records.RData
+#   2016_2025_histories.xlsx
+#
+# The first two are the actual production files in ../revised_hip/. The
+# "encounter_histories_ne*" patterns miss them because the real names put the
+# state prefix first. Keyword rules are kept below for defence in depth, but
+# data/ is now deny-by-default: nothing in it is committable unless named here.
+data/*
+!data/.gitkeep
+!data/README.md
+!data/dipper_dataset.csv
+!data/dipper_minimal.csv
+!data/dipper_processed.csv
+!data/synthetic_capture_recapture_data.csv
+!data/test_datasets/
+data/test_datasets/*
+!data/test_datasets/dipper_dataset.csv
+
+# Real workbook names, by state prefix as actually used.
+**/[Nn][Ee]_encounter_histories*
+**/[Ss][Dd]_encounter_histories*
+**/*nameDOB*
+**/*IDprimary*
+
+# Excel anywhere: no .xlsx/.xls/.xlsm is legitimately tracked in this repo,
+# and every one seen so far has been hunter-level source data.
+*.xlsx
+*.xls
+*.xlsm
+
+# Formats the keyword list never covered, anywhere in the tree.
+*.rds
+*.RData
+*.rda
+*.parquet
+*.feather
+*.sav
+*.dta
+*.sas7bdat
+
+# =============================================================================
 # SAFE DATA FILES - THESE CAN BE COMMITTED
 # =============================================================================
 # The following are explicitly allowed (remove from ignore):
