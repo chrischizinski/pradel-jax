@@ -4,7 +4,10 @@ jaxlib>=0.4.20
 jaxopt>=0.8.0
 optax>=0.1.7
 scipy>=1.7.0
-numpy>=1.26.0  # Updated to fix CVE-2021-34141
+# Upper bound for the same reason as pandas below: an unbounded major is how
+# CI broke on its own. numpy 2.x is what CI runs and the source uses no
+# aliases removed in 2.0, so the cap is the next untested major.
+numpy>=1.26.0,<3  # Floor fixes CVE-2021-34141
 # Upper bound so an upstream major cannot break CI without a commit here.
 # pandas 3 made StringDtype the default inference for text columns, which the
 # adapters previously mis-handled; that is fixed and 3.x is what CI runs, so
