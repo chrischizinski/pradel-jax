@@ -212,12 +212,17 @@ class DataFormatAdapter(ABC):
         covariates_jax = {}
         metadata = {"adapter": self.__class__.__name__}
 
-        # Assemble time-varying matrices for sequences like age_2016.. and tier_2016..
+        # Assemble time-varying matrices for sequences like age_2016.. and
+        # tier_2016..  The year is whatever follows the prefix, so a prefix that
+        # itself contains an underscore ("tier_state") works, and a longer name
+        # is not mistaken for the shorter one: "tier_state_2016" leaves
+        # "state_2016" after the "tier" prefix, which is not a year.
         def _collect_series(prefix: str):
+            start = len(prefix) + 1
             series = [
-                (col, int(col.split("_", 1)[1]))
+                (col, int(col[start:]))
                 for col in covariates.keys()
-                if col.startswith(prefix + "_") and col.split("_", 1)[1].isdigit()
+                if col.startswith(prefix + "_") and col[start:].isdigit()
             ]
             series.sort(key=lambda x: x[1])
             return [c for c, _ in series]
@@ -235,9 +240,24 @@ class DataFormatAdapter(ABC):
             except Exception as ee:
                 logger.warning(f"Failed to assemble time-varying age: {ee}")
 
-        # Build tier time-varying if available
-        tier_series = _collect_series("tier")
-        if tier_series:
+        # Build tier time-varying if available.
+        #
+        # Two tier series are recognised and they mean different things.
+        # "tier_<year>" is the status *recorded* in that year, which in the HIP
+        # data is 0 whenever the hunter did not register -- i.e. exactly when
+        # they were not captured.  "tier_state_<year>" is the status the hunter
+        # is *in*, carried forward across years they did not register, and is
+        # the one that is safe to put on the right-hand side of a model.  Both
+        # are assembled the same way; which one a formula names is the
+        # modelling decision, and it is the caller's to make.
+        #
+        # _collect_series("tier") does not pick up the tier_state columns: it
+        # requires everything after the first underscore to be digits, and
+        # "state_2016" is not.
+        for prefix in ("tier", "tier_state"):
+            tier_series = _collect_series(prefix)
+            if not tier_series:
+                continue
             try:
                 tier_matrix = np.column_stack(
                     [covariates[col] for col in tier_series]
@@ -250,8 +270,8 @@ class DataFormatAdapter(ABC):
                 # there is no "tier 1.4" - and dropping the row would discard a
                 # hunter for the years before the programme existed.
                 tier_matrix = np.where(np.isnan(tier_matrix), 0.0, tier_matrix)
-                covariates["tier"] = tier_matrix
-                covariates["tier_is_time_varying"] = True
+                covariates[prefix] = tier_matrix
+                covariates[f"{prefix}_is_time_varying"] = True
                 # Mark as categorical and provide categories from unique codes.
                 # 0 sorts first, so whenever an inactive year occurs anywhere in
                 # the data the inactive state becomes the reference level and
@@ -262,11 +282,11 @@ class DataFormatAdapter(ABC):
                 unique_codes = np.unique(codes)
                 # Build category labels as strings of codes
                 categories = [str(int(c)) for c in unique_codes]
-                covariates["tier_is_categorical"] = True
-                covariates["tier_categories"] = categories
-                metadata["tier_time_occasions"] = tier_series
+                covariates[f"{prefix}_is_categorical"] = True
+                covariates[f"{prefix}_categories"] = categories
+                metadata[f"{prefix}_time_occasions"] = tier_series
             except Exception as ee:
-                logger.warning(f"Failed to assemble time-varying tier: {ee}")
+                logger.warning(f"Failed to assemble time-varying {prefix}: {ee}")
 
         for name, array in covariates.items():
             # CRITICAL FIX: Separate numeric covariates from categorical metadata

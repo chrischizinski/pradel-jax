@@ -423,3 +423,56 @@ def test_priors_are_weighted_per_individual_under_time_varying_parameters():
     )
 
     assert weighted == pytest.approx(3.0 * unweighted, rel=1e-12)
+
+
+# --------------------------------------------------------------------------
+# Why a covariate level confined to pre-entry intervals is not free
+# --------------------------------------------------------------------------
+
+
+def test_pre_entry_intervals_constrain_only_the_seniority_rate():
+    """Survival before first capture enters the likelihood only through gamma.
+
+    Pradel reads a history in both directions.  Forward, phi is survival.
+    Backward, the same phi drives seniority through gamma = phi / (phi + f), and
+    the intervals before an individual's first capture appear *only* in that
+    reverse term.  So at those intervals the likelihood cannot distinguish
+    (phi, f) from any other pair with the same ratio: substituting one for the
+    other must leave the value unchanged.
+
+    This is not a curiosity.  It is the reason the analysis pipeline back-fills
+    a hunter's tier across the years before they first registered instead of
+    giving those years their own level.  A covariate level that is active
+    exactly on pre-entry intervals gets a phi that acts on gamma alone,
+    decoupled from the phi acting on survival -- and that decoupling removes the
+    constraint that identifies f.  On the real data a model built that way
+    gained about 220,000 AIC and reported phi near 0.003, which is what an
+    unidentified parameter looks like when it is left free.
+    """
+    from pradel_jax.models.pradel import _pradel_individual_likelihood_tv
+
+    # First capture at occasion 2, last at occasion 4: intervals 0 and 1 are
+    # pre-entry, intervals 2 and 3 are inside the capture span.
+    history = jnp.array([0.0, 0.0, 1.0, 0.0, 1.0, 0.0])
+    n_intervals = history.shape[0] - 1
+    p = jnp.full(history.shape[0], 0.4)
+
+    def ll(phi_vec, f_vec):
+        return float(_pradel_individual_likelihood_tv(history, phi_vec, p, f_vec))
+
+    base_phi = jnp.full(n_intervals, 0.8)
+    base_f = jnp.full(n_intervals, 0.2)
+    # gamma = 0.8/(0.8+0.2) = 0.8 = 0.4/(0.4+0.1); same ratio, different phi.
+    swapped_phi, swapped_f = 0.4, 0.1
+
+    pre_entry = ll(base_phi.at[0].set(swapped_phi), base_f.at[0].set(swapped_f))
+    assert pre_entry == pytest.approx(ll(base_phi, base_f), rel=0, abs=1e-12), (
+        "a pre-entry interval distinguished two (phi, f) pairs with the same "
+        "gamma, so it is contributing something other than seniority"
+    )
+
+    inside = ll(base_phi.at[2].set(swapped_phi), base_f.at[2].set(swapped_f))
+    assert not np.isclose(inside, ll(base_phi, base_f)), (
+        "an interval inside the capture span must feel phi as survival, not "
+        "only through gamma"
+    )
