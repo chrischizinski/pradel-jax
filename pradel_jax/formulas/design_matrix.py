@@ -38,6 +38,34 @@ class DesignMatrixInfo:
     formula_string: str
 
 
+def _reject_time_varying(var_name: str, n_columns: int, allow_time_varying: bool) -> None:
+    """Refuse to flatten a time-varying covariate into time-constant parameters.
+
+    A 2D covariate expands to one design column per occasion, but a model whose
+    parameters are a single value per individual then collapses those columns
+    into one linear predictor.  The fit converges and reports an AIC, so the
+    result looks ordinary while actually meaning "one time-constant parameter
+    driven additively by every occasion at once" -- not a time-varying model.
+
+    Builders that genuinely index parameters by occasion pass
+    ``allow_time_varying=True``; until the Pradel model does so, this raises
+    rather than letting the collapse happen silently.
+    """
+    if allow_time_varying:
+        return
+    raise ModelSpecificationError(
+        formula=(
+            f"covariate '{var_name}' varies over {n_columns} occasions, but this "
+            f"model's parameters take a single value per individual. Expanding it "
+            f"would silently collapse {n_columns} per-occasion columns into one "
+            f"time-constant parameter. Use a time-constant summary of "
+            f"'{var_name}' instead, or wait for occasion-specific parameter "
+            f"support"
+        ),
+        parameter=var_name,
+    )
+
+
 class DesignMatrixBuilder:
     """
     Builds design matrices from formula terms and data.
@@ -45,9 +73,12 @@ class DesignMatrixBuilder:
     Handles various term types and creates appropriate design matrix columns.
     """
 
-    def __init__(self):
+    def __init__(self, allow_time_varying: bool = False):
         self.logger = get_logger(self.__class__.__name__)
         self.time_varying_builder = TimeVaryingDesignMatrixBuilder()
+        # Opt-in, because collapsing a time-varying covariate into a
+        # time-constant parameter fails silently rather than loudly.
+        self.allow_time_varying = allow_time_varying
 
     def build_matrix(
         self,
@@ -241,6 +272,9 @@ class DesignMatrixBuilder:
 
             # Time-varying categorical (2D): create per-occasion dummies
             if categorical_data.ndim == 2:
+                _reject_time_varying(
+                    var_name, categorical_data.shape[1], self.allow_time_varying
+                )
                 if len(categories) <= 1:
                     # Single level - intercept-like per occasion
                     cols = [np.ones(n_individuals, dtype=np.float64) for _ in range(categorical_data.shape[1])]
@@ -291,6 +325,9 @@ class DesignMatrixBuilder:
                 return [column], [var_name]
             elif covariate_data.ndim == 2:
                 # Time-varying numeric covariate: expand to per-occasion columns
+                _reject_time_varying(
+                    var_name, covariate_data.shape[1], self.allow_time_varying
+                )
                 self.logger.info(f"Processing time-varying covariate: {var_name}")
                 T = covariate_data.shape[1]
                 columns = []
@@ -299,6 +336,15 @@ class DesignMatrixBuilder:
                 for t in range(K):
                     col = covariate_data[:, t].astype(np.float64)
                     if np.any(np.isnan(col)):
+                        # FIXME: unreachable while the guard above is in force,
+                        # and it must not become reachable for Tier. Tier is a
+                        # state (0 = inactive/not registered, 1 = Tier I,
+                        # 2 = Tier II), so a row mean invents states that were
+                        # never occupied - "tier 1.4" is not a thing. The
+                        # agreed handling is an explicit inactive level for
+                        # 0/missing rather than imputation; wire that in with
+                        # the occasion-specific parameter work before passing
+                        # allow_time_varying=True for Tier.
                         row_means = np.nanmean(covariate_data, axis=1)
                         col = np.where(np.isnan(col), row_means, col)
                         overall = float(np.nanmean(covariate_data))
@@ -615,7 +661,10 @@ class DesignMatrixBuilder:
 
 
 def build_design_matrix(
-    formula: ParameterFormula, data_context: Any, n_occasions: Optional[int] = None
+    formula: ParameterFormula,
+    data_context: Any,
+    n_occasions: Optional[int] = None,
+    allow_time_varying: bool = False,
 ) -> DesignMatrixInfo:
     """
     Convenience function to build design matrix.
@@ -624,9 +673,12 @@ def build_design_matrix(
         formula: ParameterFormula object
         data_context: DataContext with covariates
         n_occasions: Number of time occasions
+        allow_time_varying: Permit 2D covariates to expand into per-occasion
+            columns. Only safe for models that index parameters by occasion;
+            see _reject_time_varying.
 
     Returns:
         DesignMatrixInfo with constructed matrix
     """
-    builder = DesignMatrixBuilder()
+    builder = DesignMatrixBuilder(allow_time_varying=allow_time_varying)
     return builder.build_matrix(formula, data_context, n_occasions)
