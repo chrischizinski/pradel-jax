@@ -17,7 +17,6 @@ from ..data.adapters import DataContext
 from ..core.exceptions import ModelSpecificationError
 from ..utils.logging import get_logger
 
-
 logger = get_logger(__name__)
 
 
@@ -47,14 +46,26 @@ def exp_link(x: jnp.ndarray) -> jnp.ndarray:
 
 @jax.jit
 def _log_beta_prior(
-    probabilities: jnp.ndarray, alpha: float, beta: float, epsilon: float = 1e-6
+    probabilities: jnp.ndarray,
+    alpha: float,
+    beta: float,
+    epsilon: float = 1e-6,
+    weights: Optional[jnp.ndarray] = None,
 ) -> jnp.ndarray:
-    """Log-prior contribution for a Beta(alpha, beta) distribution."""
+    """Log-prior contribution for a Beta(alpha, beta) distribution.
+
+    ``weights`` carries the per-row frequency when the grouped backend has
+    collapsed duplicate records.  Without it the penalty would be applied once
+    per unique record instead of once per individual, so the grouped and
+    individual backends would disagree whenever a prior is switched on.
+    """
     clipped_probs = jnp.clip(probabilities, epsilon, 1.0 - epsilon)
-    return jnp.sum(
-        (alpha - 1.0) * jnp.log(clipped_probs)
-        + (beta - 1.0) * jnp.log1p(-clipped_probs)
+    terms = (alpha - 1.0) * jnp.log(clipped_probs) + (beta - 1.0) * jnp.log1p(
+        -clipped_probs
     )
+    if weights is not None:
+        terms = terms * weights
+    return jnp.sum(terms)
 
 
 @jax.jit
@@ -63,17 +74,23 @@ def _log_lognormal_prior(
     mode: float,
     sigma: float,
     epsilon: float = 1e-12,
+    weights: Optional[jnp.ndarray] = None,
 ) -> jnp.ndarray:
-    """Log-prior contribution for a log-normal distribution parameterised by its mode."""
+    """Log-prior contribution for a log-normal distribution parameterised by its mode.
+
+    ``weights`` carries the per-row frequency under the grouped backend; see
+    :func:`_log_beta_prior`.
+    """
     clipped = jnp.clip(values, epsilon, jnp.inf)
     log_values = jnp.log(clipped)
 
     mu = jnp.log(mode) + sigma**2
     log_norm_const = jnp.log(sigma) + 0.5 * jnp.log(2.0 * jnp.pi)
 
-    return jnp.sum(
-        -0.5 * ((log_values - mu) / sigma) ** 2 - log_values - log_norm_const
-    )
+    terms = -0.5 * ((log_values - mu) / sigma) ** 2 - log_values - log_norm_const
+    if weights is not None:
+        terms = terms * weights
+    return jnp.sum(terms)
 
 
 @jax.jit
@@ -190,15 +207,15 @@ def _pradel_individual_likelihood(
     det_reverse = jnp.sum(jnp.where(rev_mask, det_logprob, 0.0))
 
     # Survival (forward) and seniority (reverse) each act over the l-e intervals.
-    n_intervals = (last_capture - first_capture).astype(jnp.float32)
+    n_intervals = (last_capture - first_capture).astype(jnp.float64)
     survival_seniority = n_intervals * (log_phi + log_gamma)
 
     # ξ over the n_before occasions preceding first capture (reverse-time, rate γ)
-    n_before = first_capture.astype(jnp.float32)
+    n_before = first_capture.astype(jnp.float64)
     xi = _affine_iterate(1.0, gamma, p, n_before)
 
     # χ over the n_after occasions following last capture (forward, rate φ)
-    n_after = (n_occasions - 1 - last_capture).astype(jnp.float32)
+    n_after = (n_occasions - 1 - last_capture).astype(jnp.float64)
     chi = _affine_iterate(1.0, phi, p, n_after)
 
     captured_ll = (
@@ -234,6 +251,21 @@ def _pradel_vectorized_likelihood(
 
     # Sum across all individuals
     return jnp.sum(individual_likelihoods)
+
+
+@jax.jit
+def _pradel_weighted_vectorized_likelihood(
+    phi: jnp.ndarray,
+    p: jnp.ndarray,
+    f: jnp.ndarray,
+    capture_matrix: jnp.ndarray,
+    frequency: jnp.ndarray,
+) -> float:
+    """Sum exact individual contributions after duplicate rows are collapsed."""
+    individual_likelihoods = jax.vmap(
+        lambda i: _pradel_individual_likelihood(capture_matrix[i], phi[i], p[i], f[i])
+    )(jnp.arange(capture_matrix.shape[0]))
+    return jnp.sum(individual_likelihoods * frequency)
 
 
 class PradelModel(CaptureRecaptureModel):
@@ -520,19 +552,39 @@ class PradelModel(CaptureRecaptureModel):
         n_individuals, n_occasions = capture_matrix.shape
 
         # OPTIMIZED: Use JIT-compiled vectorized likelihood calculation
-        base_likelihood = _pradel_vectorized_likelihood(phi, p, f, capture_matrix)
+        if data_context.frequency is None:
+            base_likelihood = _pradel_vectorized_likelihood(phi, p, f, capture_matrix)
+        else:
+            base_likelihood = _pradel_weighted_vectorized_likelihood(
+                phi, p, f, capture_matrix, data_context.frequency
+            )
+
+        # Priors are per-individual penalties, so under the grouped backend each
+        # row must be counted as many times as it was observed.  Otherwise the
+        # two backends would return different values for the same model.
+        weights = data_context.frequency
 
         # Apply a soft Beta prior to keep probabilities away from the boundaries.
         if self.boundary_prior_strength > 0.0:
-            beta_prior = (
-                _log_beta_prior(phi, self.boundary_prior_alpha, self.boundary_prior_beta)
-                + _log_beta_prior(p, self.boundary_prior_alpha, self.boundary_prior_beta)
+            beta_prior = _log_beta_prior(
+                phi,
+                self.boundary_prior_alpha,
+                self.boundary_prior_beta,
+                weights=weights,
+            ) + _log_beta_prior(
+                p,
+                self.boundary_prior_alpha,
+                self.boundary_prior_beta,
+                weights=weights,
             )
             base_likelihood += self.boundary_prior_strength * beta_prior
 
         if self.recruitment_prior_strength > 0.0:
             base_likelihood += self.recruitment_prior_strength * _log_lognormal_prior(
-                f, self.recruitment_prior_mode, self.recruitment_prior_sigma
+                f,
+                self.recruitment_prior_mode,
+                self.recruitment_prior_sigma,
+                weights=weights,
             )
 
         return base_likelihood

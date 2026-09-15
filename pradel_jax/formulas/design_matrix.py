@@ -104,7 +104,7 @@ class DesignMatrixBuilder:
         design_matrix = np.column_stack(matrix_columns)
 
         # Convert to JAX array
-        design_matrix_jax = jnp.array(design_matrix, dtype=jnp.float32)
+        design_matrix_jax = jnp.array(design_matrix, dtype=jnp.float64)
 
         self.logger.debug(
             f"Built design matrix: {design_matrix_jax.shape} "
@@ -170,7 +170,7 @@ class DesignMatrixBuilder:
         self, n_individuals: int, n_occasions: int
     ) -> Tuple[List[np.ndarray], List[str]]:
         """Build intercept column (all ones)."""
-        intercept_col = np.ones(n_individuals, dtype=np.float32)
+        intercept_col = np.ones(n_individuals, dtype=np.float64)
         return [intercept_col], ["(Intercept)"]
 
     def _build_variable_columns(
@@ -243,7 +243,7 @@ class DesignMatrixBuilder:
             if categorical_data.ndim == 2:
                 if len(categories) <= 1:
                     # Single level - intercept-like per occasion
-                    cols = [np.ones(n_individuals, dtype=np.float32) for _ in range(categorical_data.shape[1])]
+                    cols = [np.ones(n_individuals, dtype=np.float64) for _ in range(categorical_data.shape[1])]
                     names = [f"{var_name}_t{t}" for t in range(categorical_data.shape[1])]
                     return cols, names
                 columns = []
@@ -254,7 +254,7 @@ class DesignMatrixBuilder:
                     for code_value, category in zip(
                         category_codes[1:], categories[1:]
                     ):
-                        dummy_col = np.isclose(codes_t, code_value).astype(np.float32)
+                        dummy_col = np.isclose(codes_t, code_value).astype(np.float64)
                         columns.append(dummy_col)
                         names.append(f"{var_name}_{category}_t{t}")
                 return columns, names
@@ -263,7 +263,7 @@ class DesignMatrixBuilder:
                 # Create dummy variables (drop first category for identifiability)
                 if len(categories) <= 1:
                     # Only one category - create intercept-like column
-                    column = np.ones(n_individuals, dtype=np.float32)
+                    column = np.ones(n_individuals, dtype=np.float64)
                     return [column], [var_name]
                 else:
                     # Multiple categories - create dummy variables (drop first)
@@ -274,7 +274,7 @@ class DesignMatrixBuilder:
                         category_codes[1:], categories[1:]
                     ):  # Skip first category
                         dummy_col = np.isclose(categorical_codes, code_value).astype(
-                            np.float32
+                            np.float64
                         )
                         columns.append(dummy_col)
                         names.append(f"{var_name}_{category}")
@@ -287,7 +287,7 @@ class DesignMatrixBuilder:
             # Handle different data shapes
             if covariate_data.ndim == 1 and len(covariate_data) == n_individuals:
                 # Individual-level covariate
-                column = covariate_data.astype(np.float32)
+                column = covariate_data.astype(np.float64)
                 return [column], [var_name]
             elif covariate_data.ndim == 2:
                 # Time-varying numeric covariate: expand to per-occasion columns
@@ -297,12 +297,12 @@ class DesignMatrixBuilder:
                 names = []
                 K = min(T, n_occasions)
                 for t in range(K):
-                    col = covariate_data[:, t].astype(np.float32)
+                    col = covariate_data[:, t].astype(np.float64)
                     if np.any(np.isnan(col)):
                         row_means = np.nanmean(covariate_data, axis=1)
                         col = np.where(np.isnan(col), row_means, col)
                         overall = float(np.nanmean(covariate_data))
-                        col = np.where(np.isnan(col), overall, col).astype(np.float32)
+                        col = np.where(np.isnan(col), overall, col).astype(np.float64)
                     columns.append(col)
                     names.append(f"{var_name}_t{t}")
                 return columns, names
@@ -413,7 +413,7 @@ class DesignMatrixBuilder:
             if var_name in data_context.covariates:
                 var_data = np.array(data_context.covariates[var_name])
                 if var_data.ndim == 1:
-                    squared_col = (var_data**2).astype(np.float32)
+                    squared_col = (var_data**2).astype(np.float64)
                     return [squared_col], [f"I({expr})"]
 
         elif "^3" in expr:
@@ -422,7 +422,7 @@ class DesignMatrixBuilder:
             if var_name in data_context.covariates:
                 var_data = np.array(data_context.covariates[var_name])
                 if var_data.ndim == 1:
-                    cubed_col = (var_data**3).astype(np.float32)
+                    cubed_col = (var_data**3).astype(np.float64)
                     return [cubed_col], [f"I({expr})"]
 
         elif "*" in expr:
@@ -437,7 +437,7 @@ class DesignMatrixBuilder:
                     if left in data_context.covariates:
                         var_data = np.array(data_context.covariates[left])
                         if var_data.ndim == 1:
-                            scaled_col = (var_data * const).astype(np.float32)
+                            scaled_col = (var_data * const).astype(np.float64)
                             return [scaled_col], [f"I({expr})"]
                 except ValueError:
                     # Both are variables - create interaction
@@ -448,7 +448,7 @@ class DesignMatrixBuilder:
                         left_data = np.array(data_context.covariates[left])
                         right_data = np.array(data_context.covariates[right])
                         if left_data.ndim == 1 and right_data.ndim == 1:
-                            product_col = (left_data * right_data).astype(np.float32)
+                            product_col = (left_data * right_data).astype(np.float64)
                             return [product_col], [f"I({expr})"]
 
         # Fallback: treat as simple variable if it exists
@@ -519,10 +519,10 @@ class DesignMatrixBuilder:
                             "Check for zeros or negative values",
                         ],
                     )
-                result_col = np.log(var_data).astype(np.float32)
+                result_col = np.log(var_data).astype(np.float64)
 
             elif func_name == "exp":
-                result_col = np.exp(var_data).astype(np.float32)
+                result_col = np.exp(var_data).astype(np.float64)
 
             elif func_name == "sqrt":
                 if np.any(var_data < 0):
@@ -533,16 +533,16 @@ class DesignMatrixBuilder:
                             "Use absolute value: sqrt(abs(var))",
                         ],
                     )
-                result_col = np.sqrt(var_data).astype(np.float32)
+                result_col = np.sqrt(var_data).astype(np.float64)
 
             elif func_name == "sin":
-                result_col = np.sin(var_data).astype(np.float32)
+                result_col = np.sin(var_data).astype(np.float64)
 
             elif func_name == "cos":
-                result_col = np.cos(var_data).astype(np.float32)
+                result_col = np.cos(var_data).astype(np.float64)
 
             elif func_name == "tan":
-                result_col = np.tan(var_data).astype(np.float32)
+                result_col = np.tan(var_data).astype(np.float64)
 
             else:
                 raise ModelSpecificationError(
@@ -607,7 +607,7 @@ class DesignMatrixBuilder:
         names = []
 
         for power in range(1, degree + 1):
-            poly_col = (var_data**power).astype(np.float32)
+            poly_col = (var_data**power).astype(np.float64)
             columns.append(poly_col)
             names.append(f"poly({var_name}, {degree}){power}")
 
