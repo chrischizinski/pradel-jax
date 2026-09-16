@@ -227,18 +227,23 @@ class DataFormatAdapter(ABC):
             series.sort(key=lambda x: x[1])
             return [c for c, _ in series]
 
-        # Build age time-varying if available
-        age_series = _collect_series("age")
-        if age_series:
+        # Numeric per-year series. "period" is how a study with a regime change
+        # marks which occasions fall on each side of it: it varies over
+        # occasions but is identical for every individual, so on its own it is
+        # a time effect rather than an individual covariate.
+        for prefix in ("age", "period"):
+            numeric_series = _collect_series(prefix)
+            if not numeric_series:
+                continue
             try:
-                age_matrix = np.column_stack(
-                    [covariates[col] for col in age_series]
+                matrix = np.column_stack(
+                    [covariates[col] for col in numeric_series]
                 ).astype(np.float64)
-                covariates["age"] = age_matrix
-                covariates["age_is_time_varying"] = True
-                metadata["age_time_occasions"] = age_series
+                covariates[prefix] = matrix
+                covariates[f"{prefix}_is_time_varying"] = True
+                metadata[f"{prefix}_time_occasions"] = numeric_series
             except Exception as ee:
-                logger.warning(f"Failed to assemble time-varying age: {ee}")
+                logger.warning(f"Failed to assemble time-varying {prefix}: {ee}")
 
         # Build tier time-varying if available.
         #
