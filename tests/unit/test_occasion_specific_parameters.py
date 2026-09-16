@@ -263,11 +263,23 @@ def test_plan_2_2_year_on_phi_and_on_p():
 
     spec = pj.create_formula_spec(phi="~1 + year", p="~1", f="~1")
     matrices = model.build_design_matrices(spec, year_context)
-    # 5 occasions -> phi spans 4 intervals; dummies for years 1..4 exist but
-    # only the first 4 occasions are in range, so the year-4 dummy is all-zero.
-    assert matrices["phi"].matrix.shape == (N_INDIVIDUALS, N_OCCASIONS - 1, N_OCCASIONS)
+    # 5 occasions -> phi spans 4 intervals, so the dummy for the final year can
+    # never be 1: there is no interval starting there. It is dropped rather
+    # than carried as an unidentified coefficient, leaving the intercept plus
+    # dummies for years 1..3.
+    assert matrices["phi"].matrix.shape == (
+        N_INDIVIDUALS,
+        N_OCCASIONS - 1,
+        N_OCCASIONS - 1,
+    )
+    assert matrices["phi"].column_names == [
+        "(Intercept)",
+        "year_1",
+        "year_2",
+        "year_3",
+    ]
 
-    base = jnp.array([0.5, 0.0, 0.0, 0.0, 0.0, 0.2, -1.1])
+    base = jnp.array([0.5, 0.0, 0.0, 0.0, 0.2, -1.1])
     bumped = base.at[2].set(0.9)
     ll_base = float(model.log_likelihood(base, year_context, matrices))
     ll_bumped = float(model.log_likelihood(bumped, year_context, matrices))
@@ -476,3 +488,163 @@ def test_pre_entry_intervals_constrain_only_the_seniority_rate():
         "an interval inside the capture span must feel phi as survival, not "
         "only through gamma"
     )
+
+
+# --------------------------------------------------------------------------
+# Plan 2.2, third case: tier * year
+# --------------------------------------------------------------------------
+
+
+def _tier_and_year_context(tier: np.ndarray) -> DataContext:
+    return _context(
+        tier=jnp.array(tier, dtype=jnp.float64),
+        tier_is_categorical=True,
+        tier_categories=["0", "1", "2"],
+        tier_is_time_varying=True,
+        year=jnp.array(
+            np.tile(np.arange(N_OCCASIONS, dtype=np.float64), (N_INDIVIDUALS, 1))
+        ),
+        year_is_categorical=True,
+        year_categories=[str(t) for t in range(N_OCCASIONS)],
+        year_is_time_varying=True,
+    )
+
+
+def _dense_tier() -> np.ndarray:
+    """Tier assignments where every level occurs in every interval.
+
+    Empty cells of the cross are dropped as unidentified, so a fixture with
+    gaps would make the expected column count depend on the random seed rather
+    than on the model.
+    """
+    tier = np.zeros((N_INDIVIDUALS, N_OCCASIONS), dtype=np.float64)
+    for t in range(N_OCCASIONS):
+        tier[:, t] = (np.arange(N_INDIVIDUALS) + t) % 3
+    return tier
+
+
+def test_tier_by_year_crosses_the_level_sets():
+    """Plan 2.2, `phi ~ tier * year`: a categorical interaction is a cross.
+
+    Each categorical contributes one column per non-reference level, so the
+    interaction is one column per cell of the cross -- not one column, which is
+    what multiplying the flattened column lists would give.  A single column
+    would still fit and still report an AIC while representing a model nobody
+    specified.
+    """
+    tier = _dense_tier()
+
+    model = PradelModel()
+    context = _tier_and_year_context(tier)
+    spec = pj.create_formula_spec(phi="~1 + tier * year", p="~1", f="~1")
+    matrices = model.build_design_matrices(spec, context)
+    names = matrices["phi"].column_names
+
+    # Intercept, 2 tier dummies, 3 year dummies (the final year cannot start an
+    # interval), and the 2x3 cross between them.
+    assert names[0] == "(Intercept)"
+    assert [n for n in names if n.startswith("tier_") and ":" not in n] == [
+        "tier_1",
+        "tier_2",
+    ]
+    assert [n for n in names if n.startswith("year_") and ":" not in n] == [
+        "year_1",
+        "year_2",
+        "year_3",
+    ]
+    crossed = [n for n in names if ":" in n]
+    assert crossed == [
+        "tier_1:year_1",
+        "tier_1:year_2",
+        "tier_1:year_3",
+        "tier_2:year_1",
+        "tier_2:year_2",
+        "tier_2:year_3",
+    ]
+    assert matrices["phi"].matrix.shape == (N_INDIVIDUALS, N_OCCASIONS - 1, 12)
+
+
+def test_tier_by_year_is_a_bigger_model_than_tier_plus_year():
+    """The cross has to add parameters, or it is not an interaction.
+
+    `~ tier + year` and `~ tier * year` differing only in name would be the
+    exact failure the old flattening produced elsewhere: a formula that looks
+    richer and fits the same model.
+    """
+    model = PradelModel()
+    context = _tier_and_year_context(_dense_tier())
+
+    additive = model.build_design_matrices(
+        pj.create_formula_spec(phi="~1 + tier + year", p="~1", f="~1"), context
+    )["phi"]
+    crossed = model.build_design_matrices(
+        pj.create_formula_spec(phi="~1 + tier * year", p="~1", f="~1"), context
+    )["phi"]
+
+    assert all(":" not in name for name in additive.column_names)
+
+    n_tier = len([n for n in additive.column_names if n.startswith("tier_")])
+    n_year = len([n for n in additive.column_names if n.startswith("year_")])
+    # Exactly one column per cell. "More columns than the additive model" would
+    # also be satisfied by a single collapsed interaction column, which is the
+    # failure this is here to catch.
+    assert crossed.parameter_count == additive.parameter_count + n_tier * n_year
+
+
+def test_no_structurally_empty_column_survives():
+    """An all-zero column is an unidentified coefficient, not a harmless one.
+
+    The cross between a tier level and a year is empty whenever nobody held
+    that tier in that year, and a time factor on phi always carries a dummy for
+    the final occasion that no interval can start at.  Both must be gone before
+    the optimiser and the Hessian ever see them.
+    """
+    rng = np.random.default_rng(11)
+    # Sparse on purpose: tier 2 never occurs at occasion 1, so tier_2:year_1 is
+    # an empty cell.
+    tier = rng.integers(0, 2, size=(N_INDIVIDUALS, N_OCCASIONS)).astype(np.float64)
+    tier[:, 2] = 2.0
+    model = PradelModel()
+    context = _tier_and_year_context(tier)
+
+    matrices = model.build_design_matrices(
+        pj.create_formula_spec(phi="~1 + tier * year", p="~1", f="~1"), context
+    )
+    design = np.asarray(matrices["phi"].matrix)
+
+    nonzero = design.any(axis=(0, 1))
+    assert nonzero.all(), (
+        "columns "
+        f"{[matrices['phi'].column_names[i] for i in np.flatnonzero(~nonzero)]} "
+        "are zero everywhere and cannot be identified"
+    )
+    assert matrices["phi"].parameter_count == design.shape[-1]
+
+
+def test_a_tier_by_year_model_fits_and_stays_local():
+    """The cross still has to reach the likelihood, at the right interval."""
+    rng = np.random.default_rng(12)
+    tier = rng.integers(0, 3, size=(N_INDIVIDUALS, N_OCCASIONS)).astype(np.float64)
+    tier[5, 2] = 0.0
+    model = PradelModel()
+    spec = pj.create_formula_spec(phi="~1 + tier * year", p="~1", f="~1")
+
+    context = _tier_and_year_context(tier)
+    matrices = model.build_design_matrices(spec, context)
+    parameters = model.get_initial_parameters(context, matrices)
+    assert parameters.shape == (matrices["phi"].parameter_count + 2,)
+
+    grad = jax.grad(lambda pars: model.log_likelihood(pars, context, matrices))(
+        parameters
+    )
+    assert np.all(np.isfinite(np.asarray(grad)))
+
+    before = float(model.log_likelihood(parameters, context, matrices))
+    tier[5, 2] = 2.0
+    moved_context = _tier_and_year_context(tier)
+    after = float(
+        model.log_likelihood(
+            parameters, moved_context, model.build_design_matrices(spec, moved_context)
+        )
+    )
+    assert not np.isclose(before, after)

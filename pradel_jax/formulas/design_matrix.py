@@ -4,6 +4,8 @@ Design matrix construction for pradel-jax.
 Converts formula terms into design matrices for statistical modeling.
 """
 
+import itertools
+
 import numpy as np
 import pandas as pd
 import jax.numpy as jnp
@@ -131,6 +133,30 @@ class DesignMatrixBuilder:
             )
             matrix_columns.extend(columns)
             column_names.extend(names)
+
+        # A categorical level that never occurs within this parameter's period
+        # range produces an all-zero column, and its coefficient is then
+        # unidentified -- the optimiser will wander on it and the Hessian will
+        # be singular.  The commonest case is benign and easy to miss: a time
+        # factor on phi carries a dummy for the final occasion, but phi spans
+        # only the intervals *between* occasions, so that dummy can never be
+        # 1.  Drop such columns and say so, rather than fitting a parameter the
+        # data cannot inform.  The intercept is never dropped.
+        kept_columns = []
+        kept_names = []
+        for column, name in zip(matrix_columns, column_names):
+            if name != "(Intercept)" and not np.any(column):
+                self.logger.warning(
+                    f"dropping design column '{name}' from "
+                    f"{formula.formula_string}: it is zero for every "
+                    f"individual and period, so its coefficient is not "
+                    f"identified"
+                )
+                continue
+            kept_columns.append(column)
+            kept_names.append(name)
+        matrix_columns = kept_columns
+        column_names = kept_names
 
         if not matrix_columns:
             raise ModelSpecificationError(
@@ -452,47 +478,71 @@ class DesignMatrixBuilder:
         n_occasions: int,
         n_periods: Optional[int] = None,
     ) -> Tuple[List[np.ndarray], List[str]]:
-        """Build columns for interaction terms."""
-        # Get all variable columns
-        var_columns = []
-        var_names = []
+        """Build columns for interaction terms.
+
+        A categorical variable contributes one column per non-reference level,
+        so an interaction involving one is the product of the *level sets*, not
+        a single column: tier (two levels beyond the reference) crossed with
+        year (one per occasion after the first) gives one column per
+        tier-by-year cell.  Multiplying the flattened column lists instead --
+        which is what this did before, when it did not simply refuse -- would
+        collapse every level into one column and quietly fit a different model.
+        """
+        per_variable_columns = []
+        per_variable_names = []
 
         for var_name in term.variables:
-            # Create variable term and get its columns
             var_term = VariableTerm(var_name)
             columns, names = self._build_variable_columns(
                 var_term, data_context, n_individuals, n_occasions, n_periods
             )
-            var_columns.extend(columns)
-            var_names.extend(names)
+            if not columns:
+                raise ModelSpecificationError(
+                    formula=(
+                        f"variable '{var_name}' in interaction "
+                        f"{':'.join(term.variables)} produced no columns"
+                    ),
+                    parameter=var_name,
+                )
+            per_variable_columns.append(columns)
+            per_variable_names.append(names)
 
-        # Create interaction by multiplying variables
-        if len(var_columns) != len(term.variables):
-            raise ModelSpecificationError(
-                formula=f"Interaction variable count mismatch: {term.variables}",
-                suggestions=[
-                    "Check for categorical variables in interactions",
-                    "Categorical variables may create multiple columns",
-                ],
-            )
-
-        # Element-wise multiplication for interaction.  A time-constant
-        # factor multiplied by an occasion-specific one is occasion-specific, so
-        # the 1D operand is broadcast along the period axis.
-        width = next((c.shape[1] for c in var_columns if c.ndim == 2), None)
+        # A time-constant factor multiplied by an occasion-specific one is
+        # occasion-specific, so the 1D operand broadcasts along the period axis.
+        width = next(
+            (
+                col.shape[1]
+                for columns in per_variable_columns
+                for col in columns
+                if col.ndim == 2
+            ),
+            None,
+        )
 
         def _align(col: np.ndarray) -> np.ndarray:
             if width is None or col.ndim == 2:
                 return col
             return np.repeat(col[:, None], width, axis=1)
 
-        interaction_col = _align(var_columns[0]).copy()
-        for col in var_columns[1:]:
-            interaction_col = interaction_col * _align(col)
+        columns = []
+        names = []
+        for combo in itertools.product(
+            *(range(len(cols)) for cols in per_variable_columns)
+        ):
+            product_col = _align(per_variable_columns[0][combo[0]]).copy()
+            for position, index in enumerate(combo[1:], start=1):
+                product_col = product_col * _align(
+                    per_variable_columns[position][index]
+                )
+            columns.append(product_col)
+            names.append(
+                ":".join(
+                    per_variable_names[position][index]
+                    for position, index in enumerate(combo)
+                )
+            )
 
-        interaction_name = ":".join(term.variables)
-
-        return [interaction_col], [interaction_name]
+        return columns, names
 
     def _build_function_columns(
         self,
