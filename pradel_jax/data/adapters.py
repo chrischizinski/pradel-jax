@@ -16,7 +16,6 @@ from ..core.exceptions import DataFormatError
 from ..utils.logging import get_logger
 from ..utils.validation import validate_capture_matrix
 
-
 logger = get_logger(__name__)
 
 
@@ -44,6 +43,7 @@ class DataContext:
     occasion_names: Optional[List[str]] = None
     individual_ids: Optional[List[str]] = None
     metadata: Optional[Dict[str, Any]] = None
+    frequency: Optional[jnp.ndarray] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -60,7 +60,9 @@ class DataContext:
                 covariates_np[name] = np.array(value)
             else:
                 # This should not happen anymore with the fix, but keep for safety
-                logger.warning(f"Non-JAX array found in covariates during serialization: {name}")
+                logger.warning(
+                    f"Non-JAX array found in covariates during serialization: {name}"
+                )
                 covariates_np[name] = value
 
         # Convert CovariateInfo objects to dicts
@@ -84,6 +86,7 @@ class DataContext:
             "occasion_names": self.occasion_names,
             "individual_ids": self.individual_ids,
             "metadata": self.metadata,
+            "frequency": None if self.frequency is None else np.array(self.frequency),
         }
 
     @classmethod
@@ -102,7 +105,9 @@ class DataContext:
                 covariates[name] = jnp.array(value)
             else:
                 # This should not happen with the fix, but keep for compatibility
-                logger.warning(f"Non-array value found in covariates during deserialization: {name}")
+                logger.warning(
+                    f"Non-array value found in covariates during deserialization: {name}"
+                )
                 covariates[name] = value
 
         # Reconstruct CovariateInfo objects
@@ -119,6 +124,11 @@ class DataContext:
             occasion_names=data_dict["occasion_names"],
             individual_ids=data_dict["individual_ids"],
             metadata=data_dict["metadata"],
+            frequency=(
+                None
+                if data_dict.get("frequency") is None
+                else jnp.array(data_dict["frequency"])
+            ),
         )
 
 
@@ -202,40 +212,86 @@ class DataFormatAdapter(ABC):
         covariates_jax = {}
         metadata = {"adapter": self.__class__.__name__}
 
-        # Assemble time-varying matrices for sequences like age_2016.. and tier_2016..
+        # Assemble time-varying matrices for sequences like age_2016.. and
+        # tier_2016..  The year is whatever follows the prefix, so a prefix that
+        # itself contains an underscore ("tier_state") works, and a longer name
+        # is not mistaken for the shorter one: "tier_state_2016" leaves
+        # "state_2016" after the "tier" prefix, which is not a year.
         def _collect_series(prefix: str):
-            series = [(col, int(col.split('_',1)[1])) for col in covariates.keys() if col.startswith(prefix + '_') and col.split('_',1)[1].isdigit()]
+            start = len(prefix) + 1
+            series = [
+                (col, int(col[start:]))
+                for col in covariates.keys()
+                if col.startswith(prefix + "_") and col[start:].isdigit()
+            ]
             series.sort(key=lambda x: x[1])
-            return [c for c,_ in series]
+            return [c for c, _ in series]
 
-        # Build age time-varying if available
-        age_series = _collect_series('age')
-        if age_series:
+        # Numeric per-year series. "period" is how a study with a regime change
+        # marks which occasions fall on each side of it: it varies over
+        # occasions but is identical for every individual, so on its own it is
+        # a time effect rather than an individual covariate.
+        for prefix in ("age", "period"):
+            numeric_series = _collect_series(prefix)
+            if not numeric_series:
+                continue
             try:
-                age_matrix = np.column_stack([covariates[col] for col in age_series]).astype(np.float32)
-                covariates['age'] = age_matrix
-                covariates['age_is_time_varying'] = True
-                metadata['age_time_occasions'] = age_series
+                matrix = np.column_stack(
+                    [covariates[col] for col in numeric_series]
+                ).astype(np.float64)
+                covariates[prefix] = matrix
+                covariates[f"{prefix}_is_time_varying"] = True
+                metadata[f"{prefix}_time_occasions"] = numeric_series
             except Exception as ee:
-                logger.warning(f"Failed to assemble time-varying age: {ee}")
+                logger.warning(f"Failed to assemble time-varying {prefix}: {ee}")
 
-        # Build tier time-varying if available
-        tier_series = _collect_series('tier')
-        if tier_series:
+        # Build tier time-varying if available.
+        #
+        # Two tier series are recognised and they mean different things.
+        # "tier_<year>" is the status *recorded* in that year, which in the HIP
+        # data is 0 whenever the hunter did not register -- i.e. exactly when
+        # they were not captured.  "tier_state_<year>" is the status the hunter
+        # is *in*, carried forward across years they did not register, and is
+        # the one that is safe to put on the right-hand side of a model.  Both
+        # are assembled the same way; which one a formula names is the
+        # modelling decision, and it is the caller's to make.
+        #
+        # _collect_series("tier") does not pick up the tier_state columns: it
+        # requires everything after the first underscore to be digits, and
+        # "state_2016" is not.
+        for prefix in ("tier", "tier_state"):
+            tier_series = _collect_series(prefix)
+            if not tier_series:
+                continue
             try:
-                tier_matrix = np.column_stack([covariates[col] for col in tier_series]).astype(np.float32)
-                covariates['tier'] = tier_matrix
-                covariates['tier_is_time_varying'] = True
-                # Mark as categorical and provide categories from unique codes
-                codes = tier_matrix[~np.isnan(tier_matrix)].astype(int)
+                tier_matrix = np.column_stack(
+                    [covariates[col] for col in tier_series]
+                ).astype(np.float64)
+                # Tier is a state, not a quantity: 0 = inactive/not
+                # registered, 1 = Tier I, 2 = Tier II.  A year with no record is
+                # a year the hunter was not registered, which is exactly what 0
+                # already means, so missing collapses into the inactive level
+                # rather than being imputed.  Averaging would invent states -
+                # there is no "tier 1.4" - and dropping the row would discard a
+                # hunter for the years before the programme existed.
+                tier_matrix = np.where(np.isnan(tier_matrix), 0.0, tier_matrix)
+                covariates[prefix] = tier_matrix
+                covariates[f"{prefix}_is_time_varying"] = True
+                # Mark as categorical and provide categories from unique codes.
+                # 0 sorts first, so whenever an inactive year occurs anywhere in
+                # the data the inactive state becomes the reference level and
+                # the Tier I / Tier II coefficients read as contrasts against
+                # "not registered".  When no inactive year occurs the level is
+                # absent, which keeps the design matrix full rank.
+                codes = tier_matrix.astype(int)
                 unique_codes = np.unique(codes)
                 # Build category labels as strings of codes
                 categories = [str(int(c)) for c in unique_codes]
-                covariates['tier_is_categorical'] = True
-                covariates['tier_categories'] = categories
-                metadata['tier_time_occasions'] = tier_series
+                covariates[f"{prefix}_is_categorical"] = True
+                covariates[f"{prefix}_categories"] = categories
+                metadata[f"{prefix}_time_occasions"] = tier_series
             except Exception as ee:
-                logger.warning(f"Failed to assemble time-varying tier: {ee}")
+                logger.warning(f"Failed to assemble time-varying {prefix}: {ee}")
 
         for name, array in covariates.items():
             # CRITICAL FIX: Separate numeric covariates from categorical metadata
@@ -251,7 +307,9 @@ class DataFormatAdapter(ABC):
                     covariates_jax[name] = jnp.array(array)
                 except (TypeError, ValueError) as e:
                     # If conversion fails, it's metadata - store in metadata dict
-                    logger.warning(f"Moving '{name}' to metadata due to JAX conversion error: {e}")
+                    logger.warning(
+                        f"Moving '{name}' to metadata due to JAX conversion error: {e}"
+                    )
                     metadata[name] = array
 
         n_individuals, n_occasions = capture_matrix.shape
@@ -290,7 +348,6 @@ def _is_categorical_column(series: pd.Series) -> bool:
     on the numeric side, since they cast cleanly to 0.0/1.0.
     """
     return not pd.api.types.is_numeric_dtype(series)
-
 
 
 class RMarkFormatAdapter(DataFormatAdapter):
@@ -360,13 +417,13 @@ class RMarkFormatAdapter(DataFormatAdapter):
                 # Store categorical variable as-is, design matrix builder will handle dummy variables
                 # Convert to numeric codes for easier processing
                 categorical_data = pd.Categorical(data[col])
-                covariates[col] = categorical_data.codes.astype(np.float32)
+                covariates[col] = categorical_data.codes.astype(np.float64)
                 # Store category information for design matrix building
                 covariates[f"{col}_categories"] = categorical_data.categories.tolist()
                 covariates[f"{col}_is_categorical"] = True
             else:
                 # Numeric variable
-                values = data[col].values.astype(np.float32)
+                values = data[col].values.astype(np.float64)
                 # Handle NaN values
                 if np.any(np.isnan(values)):
                     logger.warning(
@@ -524,13 +581,13 @@ class GenericFormatAdapter(DataFormatAdapter):
                 # Store categorical variable as-is, design matrix builder will handle dummy variables
                 # Convert to numeric codes for easier processing
                 categorical_data = pd.Categorical(data_processed[col])
-                covariates[col] = categorical_data.codes.astype(np.float32)
+                covariates[col] = categorical_data.codes.astype(np.float64)
                 # Store category information for design matrix building
                 covariates[f"{col}_categories"] = categorical_data.categories.tolist()
                 covariates[f"{col}_is_categorical"] = True
             else:
                 # Numeric variable
-                values = data_processed[col].values.astype(np.float32)
+                values = data_processed[col].values.astype(np.float64)
                 if np.any(np.isnan(values)):
                     values = np.nan_to_num(values, nan=np.nanmean(values))
                 covariates[col] = values

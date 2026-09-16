@@ -8,6 +8,15 @@ multiple data formats, flexible model specification, and robust optimization.
 __version__ = "2.0.0-alpha"
 __author__ = "Ava Britton, Christopher Chizinski"
 
+# Double precision is required, not optional.  Pradel log-likelihoods for the
+# Nebraska and South Dakota datasets are around -5.7e5, where a float32 ulp is
+# 0.0625.  Nested-model log-likelihood differences are routinely smaller than
+# that, so AIC comparisons in float32 compare rounding noise.  Enabled here,
+# before any jax array is created by the imports below.
+import jax
+
+jax.config.update("jax_enable_x64", True)
+
 # Core data loading
 from .data.adapters import (
     load_data,

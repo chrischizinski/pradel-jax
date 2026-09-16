@@ -8,6 +8,7 @@ from typing import Optional, Union, Dict, Any
 from pathlib import Path
 
 from ..data.adapters import load_data, DataContext
+from ..data.grouped import group_data_context
 from ..formulas import FormulaSpec, ParameterFormula, create_simple_spec, ParameterType
 from ..models import PradelModel, ModelResult, CaptureRecaptureModel
 import numpy as np
@@ -22,30 +23,30 @@ logger = get_logger(__name__)
 
 def create_formula_spec(
     phi: Optional[str] = None,
-    p: Optional[str] = None, 
+    p: Optional[str] = None,
     f: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> FormulaSpec:
     """
     Create a formula specification for Pradel model parameters.
-    
+
     Args:
         phi: Formula for survival probability (default: "~1")
-        p: Formula for detection probability (default: "~1") 
+        p: Formula for detection probability (default: "~1")
         f: Formula for recruitment rate (default: "~1")
         **kwargs: Additional parameter formulas
-        
+
     Returns:
         FormulaSpec object ready for model fitting
-        
+
     Examples:
         >>> # Constant parameters
         >>> spec = create_formula_spec()
-        
+
         >>> # Survival and detection with sex effect
         >>> spec = create_formula_spec(
         ...     phi="~1 + sex",
-        ...     p="~1 + sex", 
+        ...     p="~1 + sex",
         ...     f="~1"
         ... )
     """
@@ -53,33 +54,32 @@ def create_formula_spec(
     phi = phi or "~1"
     p = p or "~1"
     f = f or "~1"
-    
+
     # Create parameter formulas with correct constructor signature
     phi_formula = ParameterFormula(parameter=ParameterType.PHI, formula_string=phi)
     p_formula = ParameterFormula(parameter=ParameterType.P, formula_string=p)
     f_formula = ParameterFormula(parameter=ParameterType.F, formula_string=f)
-    
+
     # Handle additional parameters from kwargs
     optional_formulas = {}
     for param_name, formula_str in kwargs.items():
         try:
             param_type = ParameterType[param_name.upper()]
             optional_formulas[param_name] = ParameterFormula(
-                parameter=param_type, 
-                formula_string=formula_str
+                parameter=param_type, formula_string=formula_str
             )
         except KeyError:
             logger.warning(f"Unknown parameter type: {param_name}")
-    
+
     # Create FormulaSpec with correct structure
     return FormulaSpec(
         phi=phi_formula,
         p=p_formula,
         f=f_formula,
-        psi=optional_formulas.get('psi'),
-        r=optional_formulas.get('r'),
-        name=kwargs.get('name'),
-        description=kwargs.get('description')
+        psi=optional_formulas.get("psi"),
+        r=optional_formulas.get("r"),
+        name=kwargs.get("name"),
+        description=kwargs.get("description"),
     )
 
 
@@ -88,25 +88,28 @@ def fit_model(
     formula: Optional[FormulaSpec] = None,
     data: Optional[Union[DataContext, str, Path]] = None,
     strategy: Optional[Union[str, OptimizationStrategy]] = None,
-    **kwargs
+    backend: str = "individual",
+    **kwargs,
 ) -> ModelResult:
     """
     Fit a capture-recapture model to data.
-    
+
     Args:
         model: Model instance (default: PradelModel())
         formula: Formula specification (default: constant parameters)
         data: Data context or file path
         strategy: Optimization strategy ("auto", "lbfgs", "slsqp", "adam", "multi_start")
+        backend: ``"individual"`` (reference likelihood) or ``"grouped"``
+            (exact frequency-weighted duplicate-history likelihood).
         **kwargs: Additional optimization parameters
-        
+
     Returns:
         ModelResult with fitted parameters and diagnostics
-        
+
     Examples:
         >>> # Simple fitting with defaults
         >>> result = fit_model(data="data/dipper_dataset.csv")
-        
+
         >>> # Custom model specification
         >>> formula = create_formula_spec(
         ...     phi="~1 + sex",
@@ -121,11 +124,11 @@ def fit_model(
     # Set defaults
     if model is None:
         model = PradelModel()
-        
+
     if formula is None:
         formula = create_formula_spec()
         logger.info("Using default constant parameter formulas")
-        
+
     # Load data if needed
     if isinstance(data, (str, Path)):
         data = load_data(data)
@@ -135,10 +138,18 @@ def fit_model(
             suggestions=[
                 "Provide a DataContext object",
                 "Provide a file path to load data",
-                "Use load_data() to create a DataContext first"
-            ]
+                "Use load_data() to create a DataContext first",
+            ],
         )
-        
+
+    if backend not in {"individual", "grouped"}:
+        raise ModelSpecificationError(
+            specific_issue=f"Unknown likelihood backend: {backend}",
+            suggestions=["Use 'individual' or 'grouped'."],
+        )
+    if backend == "grouped":
+        data = group_data_context(data)
+
     # Parse strategy
     if isinstance(strategy, str):
         if strategy.lower() == "auto":
@@ -153,27 +164,27 @@ def fit_model(
                     specific_issue=f"Invalid optimization strategy: {strategy}",
                     suggestions=[
                         f"Valid strategies: {valid_strategies}",
-                        "Use 'auto' for automatic strategy selection"
-                    ]
+                        "Use 'auto' for automatic strategy selection",
+                    ],
                 )
     elif strategy is None:
         # Default to automatic selection
         strategy = None
-        
+
     strategy_name = strategy.value if strategy else "automatic"
     logger.info(f"Fitting {model.__class__.__name__} with {strategy_name} optimization")
-    
+
     try:
         # Build design matrices
         design_matrices = model.build_design_matrices(formula, data)
-        
+
         def objective_function(params):
             return -model.log_likelihood(params, data, design_matrices)
-            
+
         # Get initial parameters and bounds
-        initial_params = model.get_initial_parameters(data, design_matrices) 
+        initial_params = model.get_initial_parameters(data, design_matrices)
         bounds = model.get_parameter_bounds(data, design_matrices)
-        
+
         # Run optimization using the orchestrator
         optimization_result = optimize_model(
             objective_function=objective_function,
@@ -181,20 +192,24 @@ def fit_model(
             context=data,
             bounds=bounds,
             preferred_strategy=strategy,
-            **kwargs
+            **kwargs,
         )
-        
+
         if not optimization_result.success:
             raise OptimizationError(
                 reason=optimization_result.result.message,
-                optimizer=optimization_result.strategy_used
+                optimizer=optimization_result.strategy_used,
             )
-            
+
         # Extract results from OptimizationResponse structure
-        opt_result = optimization_result.result  
-        
+        opt_result = optimization_result.result
+
         # Map optimization result to ModelResult fields
-        status = OptimizationStatus.SUCCESS if opt_result.success else OptimizationStatus.FAILED
+        status = (
+            OptimizationStatus.SUCCESS
+            if opt_result.success
+            else OptimizationStatus.FAILED
+        )
 
         # Standard errors from the exact jax.hessian covariance (falls back to
         # finite differences inside the property if autodiff is unavailable).
@@ -220,30 +235,31 @@ def fit_model(
             design_matrices=design_matrices,
             parameter_se=param_se,
             parameter_names=param_names,
-            n_iterations=getattr(opt_result, 'nit', None),
+            n_iterations=getattr(opt_result, "nit", None),
             optimizer_used=optimization_result.strategy_used,
             fit_time=optimization_result.total_time,
             metadata={
-                'optimization_message': opt_result.message,
-                'n_function_evaluations': opt_result.nfev,
-                'data_summary': {
-                    'n_individuals': data.n_individuals,
-                    'n_occasions': data.n_occasions,
-                    'n_covariates': len(data.covariates)
-                }
-            }
+                "optimization_message": opt_result.message,
+                "n_function_evaluations": opt_result.nfev,
+                "data_summary": {
+                    "n_individuals": data.n_individuals,
+                    "n_occasions": data.n_occasions,
+                    "n_covariates": len(data.covariates),
+                },
+                "backend": backend,
+                "grouped_data": (data.metadata or {}).get("grouped"),
+            },
         )
-        
+
         logger.info(f"Model fitting completed successfully in {result.fit_time:.4f}s")
         return result
-        
+
     except Exception as e:
         if isinstance(e, (ModelSpecificationError, OptimizationError)):
             raise
         else:
             raise OptimizationError(
-                reason=f"Model fitting failed: {str(e)}",
-                optimizer="unknown"
+                reason=f"Model fitting failed: {str(e)}", optimizer="unknown"
             ) from e
 
 
@@ -264,10 +280,10 @@ def validate_against_rmark(*args, **kwargs):
 
 
 __all__ = [
-    "fit_model", 
+    "fit_model",
     "create_formula_spec",
-    "fit_models", 
-    "select_best_model", 
-    "validate_against_rmark", 
-    "load_data"
+    "fit_models",
+    "select_best_model",
+    "validate_against_rmark",
+    "load_data",
 ]
