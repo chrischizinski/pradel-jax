@@ -83,10 +83,21 @@ def _rescale(vector):
     vector by zero mass gives nan, which then poisons every later occasion and
     every gradient. Returning a zero vector keeps the arithmetic clean, and the
     -inf carried in the accumulator is preserved all the way out.
+
+    The log needs the same guard for its derivative. ``log(0)`` is the right
+    value, but its derivative is inf, and inf times the zero sensitivity of the
+    mass is nan. Zero mass is not only impossible histories: a hunter certain
+    to be recorded (no mortality, last entry rate fixed at 1) has a zero
+    probability of never being seen, and the conditioning term took the log of
+    exactly that -- turning the gradient and Hessian nan in a no-mortality fit
+    while its value stayed finite. The double ``where`` keeps the value and
+    gives a zero derivative instead.
     """
     mass = jnp.sum(vector)
-    safe = jnp.where(mass > 0, vector / jnp.where(mass > 0, mass, 1.0), 0.0)
-    return safe, jnp.log(mass)
+    positive = mass > 0
+    safe = jnp.where(positive, vector / jnp.where(positive, mass, 1.0), 0.0)
+    log_mass = jnp.where(positive, jnp.log(jnp.where(positive, mass, 1.0)), -jnp.inf)
+    return safe, log_mass
 
 
 @jax.jit

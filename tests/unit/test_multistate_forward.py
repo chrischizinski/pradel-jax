@@ -17,6 +17,7 @@ and depends on none of the code under test.
 import itertools
 
 import numpy as np
+import jax
 import jax.numpy as jnp
 import pytest
 
@@ -233,3 +234,37 @@ def test_conditional_likelihood_sums_to_one_over_observable_histories(seed):
         )
 
     assert total == pytest.approx(1.0, rel=0, abs=1e-9)
+
+
+def test_a_history_certain_to_be_seen_has_finite_derivatives():
+    """Zero probability of never being seen must not poison the gradient.
+
+    With no mortality and the last entry rate fixed at 1, a hunter who is NEW
+    at the start is certain to be recorded, so the conditioning term's
+    probability of never being seen is exactly zero. Its log is fine (the
+    conditioning is log 1 = 0), but the derivative of log at zero is inf, and
+    that made the gradient and Hessian nan -- found on the SD no-mortality
+    sensitivity fit, where it cost every standard error. The value must be
+    unchanged and the derivatives finite.
+    """
+    from pradel_jax.models import multistate_fit as F
+
+    years = list(range(2016, 2020))
+    avail, era = F.regime_indicators(years, 2018)
+    names = ["entry_0", "entry_1"] + list(F.BEHAVIOUR)
+    x0 = jnp.array([-1.0, -1.0] + [-1.5] * len(F.BEHAVIOUR))
+    history = jnp.array([0, 0, 0, 1])
+    initial = jnp.zeros(N_STATES).at[0].set(1.0)
+
+    def log_likelihood(x, mortality):
+        matrices = F.transition_matrices(
+            dict(zip(names, x)), jnp.full((1, 3), mortality), avail, era
+        )[0]
+        return conditional_log_likelihood(history, matrices, initial)
+
+    value = float(log_likelihood(x0, 0.0))
+    assert np.isfinite(value)
+    assert np.isfinite(np.asarray(jax.grad(log_likelihood)(x0, 0.0))).all()
+    assert np.isfinite(np.asarray(jax.hessian(log_likelihood)(x0, 0.0))).all()
+    # Continuity: a vanishing mortality gives (nearly) the same value.
+    assert value == pytest.approx(float(log_likelihood(x0, 1e-9)), abs=1e-6)

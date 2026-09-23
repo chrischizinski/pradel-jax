@@ -332,3 +332,145 @@ def test_one_boundary_parameter_does_not_erase_every_standard_error():
     np.testing.assert_allclose(
         covariance[np.ix_([0, 2], [0, 2])], np.linalg.inv(interior)
     )
+
+
+# --------------------------------------------------------------------------
+# Age bands: why the initial weights need age
+# --------------------------------------------------------------------------
+
+BANDS = ["young", "middle", "old", "unknown"]
+REFERENCE_BAND = 1
+# Calibrated to the NE full-model estimates (life table, primary sample),
+# collapsed to three bands: the young are mostly yet to start and almost never
+# lapsed hunters; older people first seen later lean the other way.
+BAND_TRUTH = {
+    "initial_new_age": np.array([1.5, -0.8, 0.0]),
+    "initial_out_age": np.array([-3.0, 0.15, 0.0]),
+    "entry_age": np.array([-0.5, 0.15, 0.0]),
+    "out_age": np.array([0.5, -0.2, 0.0]),
+    "ret_age": np.array([-0.8, 0.3, 0.0]),
+}
+
+
+def _bands(ages):
+    return np.where(ages < 25, 0, np.where(ages < 55, 1, 2))
+
+
+def _simulate_banded(n, rng):
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    ages = rng.integers(12, 80, size=n)[:, None] + np.arange(N_INTERVALS)[None, :]
+    bands = _bands(ages)
+    mortality = _mortality(ages, rng.random(n) < 0.9)
+    one_hot = jnp.asarray(np.delete(np.eye(len(BANDS))[bands], REFERENCE_BAND, -1))
+    params = {k: jnp.asarray(v) for k, v in TRUTH.items() if k != "entry"}
+    params |= {k: jnp.asarray(v) for k, v in STEADY_ENTRY.items()}
+    params |= {k: jnp.asarray(v) for k, v in BAND_TRUTH.items()}
+    matrices = np.asarray(
+        F.transition_matrices(params, jnp.asarray(mortality), avail, era, band=one_hot)
+    )
+    base = jnp.asarray([-0.2, -1.0])  # initial_new, initial_out
+    first = one_hot[:, 0, :]
+    shifts = jnp.stack(
+        [first @ params["initial_new_age"], first @ params["initial_out_age"]], -1
+    )
+    initial = np.asarray(jax.vmap(lambda s: F.initial_distribution(base + s))(shifts))
+
+    def code(states):
+        return np.where(
+            states == STATE_TIER1,
+            OBS_TIER1,
+            np.where(states == STATE_TIER2, OBS_TIER2, OBS_NONE),
+        )
+
+    states = (rng.random(n)[:, None] > np.cumsum(initial, axis=1)).sum(axis=1)
+    history = np.zeros((n, len(YEARS)), dtype=np.int32)
+    history[:, 0] = code(states)
+    for t in range(1, len(YEARS)):
+        rows = matrices[np.arange(n), t - 1, states]
+        states = (rng.random(n)[:, None] > np.cumsum(rows, axis=1)).sum(axis=1)
+        history[:, t] = code(states)
+    seen = history.max(axis=1) > 0
+    return history[seen], mortality[seen], bands[seen]
+
+
+@pytest.fixture(scope="module")
+def banded():
+    history, mortality, bands = _simulate_banded(60_000, np.random.default_rng(21))
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    common = dict(age_bands=bands, band_labels=BANDS, reference_band=REFERENCE_BAND)
+    out = {}
+    for label, effects in (("with_initial", ("entry", "initial", "out", "ret")),):
+        for k in (1.0, 2.0):
+            out[(label, k)] = F.fit(
+                history,
+                np.clip(mortality * k, 0.0, 0.95),
+                avail,
+                era,
+                age_effects=effects,
+                **common,
+            )
+    return out
+
+
+def test_age_band_effects_are_recovered_and_the_true_mortality_fits_best(banded):
+    """With age on entry, the initial weights, sitting out and returning, the
+    band effects come back, the true mortality schedule fits better than a
+    doubled one, and the tier contrast is unaffected.
+
+    What this does NOT show: that leaving age off the initial weights is what
+    made the real NE/SD fits prefer an inflated life table. Simulated with
+    these same (calibrated) effects, the age-blind model still prefers the
+    true mortality, so that mechanism is not established -- only the
+    real-data result that adding these effects removed the preference.
+    """
+    right, inflated = banded[("with_initial", 1.0)], banded[("with_initial", 2.0)]
+    assert right["converged"], right["message"]
+    assert right["log_likelihood"] > inflated["log_likelihood"]
+
+    for vector, truth in BAND_TRUTH.items():
+        for i, label in enumerate(["young", "old"]):
+            name = f"{vector[:-4]}_age_{label}"
+            assert (
+                abs(right["estimates"][name] - truth[i]) < 0.3
+            ), f"{name}: {right['estimates'][name]:+.3f} vs {truth[i]:+.3f}"
+    assert abs(right["tier_contrast"] - TRUE_CONTRAST) < 3 * right["tier_contrast_se"]
+
+
+def test_every_start_reaches_the_same_maximum(banded):
+    """The staged and cold starts should agree; if not, the fit is multimodal
+    and the reported maximum is only the best one found."""
+    lls = banded[("with_initial", 1.0)]["start_log_likelihoods"]
+    assert len(lls) == 2
+    assert max(lls) - min(lls) < 1.0, lls
+
+
+def test_an_empty_age_band_is_dropped_not_left_to_erase_the_standard_errors(banded):
+    """The simulated data has no hunter of unknown age, as NE's primary sample
+    has none. That band's coefficients carry no information; kept, they made
+    the Hessian singular and the tier contrast's SE NaN on the NE data. They
+    must be dropped, and everything else keep its standard error."""
+    fit = banded[("with_initial", 1.0)]
+    assert all(name.endswith("_age_unknown") for name in fit["dropped_bands"])
+    assert len(fit["dropped_bands"]) == 5  # entry, initial_new, initial_out, out, ret
+    assert not any(name.endswith("_age_unknown") for name in fit["estimates"])
+    assert np.isfinite(fit["tier_contrast_se"]) and fit["tier_contrast_se"] > 0
+    assert fit["hessian_min_eigenvalue"] > 0
+
+
+def test_a_parameter_made_irrelevant_by_another_is_found_and_excluded():
+    """An interior parameter with no curvature, not caught by the boundary
+    check, must be reported as not estimable instead of erasing every SE.
+    Non-finite Hessian rows are handled the same way."""
+    interior = np.array([[4.0, 1.0], [1.0, 2.0]])
+    hessian = np.zeros((4, 4))
+    hessian[np.ix_([0, 2], [0, 2])] = interior  # parameter 1: flat, interior
+    hessian[3, :] = hessian[:, 3] = np.nan  # parameter 3: non-finite
+    covariance, excluded, smallest = F.estimable_covariance(
+        hessian, [False, False, False, False]
+    )
+    assert sorted(excluded) == [1, 3]  # the flat one and the non-finite one
+    assert np.isnan(covariance[3]).all() and np.isnan(covariance[1]).all()
+    np.testing.assert_allclose(
+        covariance[np.ix_([0, 2], [0, 2])], np.linalg.inv(interior)
+    )
+    assert smallest > 0
