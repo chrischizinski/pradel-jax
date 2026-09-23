@@ -114,6 +114,11 @@ def _simulate(params, ages, rng):
     """Walk the chain forward and record only what a registration file would see."""
     n_individuals = len(ages)
     matrices = np.asarray(_matrices(params, ages, n_individuals))
+    return _walk(matrices, rng)
+
+
+def _walk(matrices, rng):
+    n_individuals = matrices.shape[0]
     initial = np.asarray(_initial(n_individuals))
 
     states = np.array(
@@ -394,3 +399,107 @@ def test_the_tier_effect_survives_a_wrong_life_table(misspecified):
         assert np.sign(fitted_effect) == np.sign(
             true_effect
         ), f"belief '{name}' flipped the sign of the tier effect"
+
+
+# --------------------------------------------------------------------------
+# The rival story: heterogeneity instead of a permanently-gone fraction
+# --------------------------------------------------------------------------
+
+
+def _simulate_with_frailty(params, ages, frailty_sd, rng):
+    """Generate data with *no* permanent cessation, only uneven return propensity.
+
+    Each hunter carries their own return probability, logit-normal around the
+    `ret` in ``params``, and `cease` is exactly zero. The observed return hazard
+    still declines with time away -- the pool of absent hunters fills up with
+    the ones least inclined to come back -- which is the same signature the cure
+    model attributes to people leaving for good. The two stories are not
+    distinguishable from fit, so this is the case the real analysis cannot rule
+    out.
+    """
+    n_individuals = len(ages)
+    n_intervals = N_OCCASIONS - 1
+    shape = (n_individuals, n_intervals)
+    probabilities = {
+        name: jnp.broadcast_to(jax.nn.sigmoid(params[i]), shape)
+        for i, name in enumerate(PARAM_ORDER)
+    }
+    frailty = rng.normal(0.0, frailty_sd, size=n_individuals)
+    ret_logit = params[PARAM_ORDER.index("ret")] + frailty
+    probabilities["ret"] = jnp.broadcast_to(
+        jax.nn.sigmoid(jnp.array(ret_logit))[:, None], shape
+    )
+    probabilities["cease"] = jnp.zeros(shape)
+
+    age_grid = ages[:, None] + np.arange(n_intervals)[None, :]
+    gate = jnp.broadcast_to(jnp.array(_tier2_gate()), shape)
+    matrices = build_transition_matrices(
+        mortality=jnp.array(_mortality(age_grid)), tier2_available=gate, **probabilities
+    )
+    return _walk(np.asarray(matrices), rng)
+
+
+@pytest.fixture(scope="module")
+def heterogeneous():
+    """Fit the cure model to data that has no cure fraction at all.
+
+    Mortality is given correctly, so the only thing wrong is the story about
+    why the return hazard declines. Two frailty levels: a moderate one, and one
+    twice as wide, to see whether any bias grows with the amount of
+    heterogeneity rather than sitting at one convenient value.
+    """
+    truth = np.array([TRUTH[name] for name in PARAM_ORDER])
+    fits = {}
+    for frailty_sd in (0.8, 1.6):
+        rng = np.random.default_rng(31)
+        ages = rng.uniform(18, 70, size=40_000)
+        history = _simulate_with_frailty(truth, ages, frailty_sd, rng)
+        start = truth + rng.normal(0.0, 0.5, size=len(truth))
+        fits[frailty_sd] = _fit_with_mortality(history, ages, _mortality, start)
+    return truth, fits
+
+
+def test_heterogeneity_is_misread_as_permanent_cessation(heterogeneous):
+    """Where the cost of the wrong story lands, recorded so it is reported.
+
+    The data contains no one who left for good, yet the cure model finds a
+    cessation rate of a few percent a year, and more of it the wider the
+    heterogeneity. Over the nine intervals that compounds into a substantial
+    "permanently gone" fraction that does not exist. The estimated cessation
+    rate -- and any statement about how many hunters quit for good -- is
+    therefore conditional on the cure story being the right one, and has to be
+    presented as such.
+    """
+    _, fits = heterogeneous
+    index = PARAM_ORDER.index("cease")
+    moderate = float(jax.nn.sigmoid(fits[0.8][index]))
+    wide = float(jax.nn.sigmoid(fits[1.6][index]))
+
+    assert moderate > 0.01, f"moderate frailty: cessation {moderate:.4f}"
+    assert wide > moderate, (
+        f"cessation should grow with heterogeneity: sd 0.8 -> {moderate:.4f}, "
+        f"sd 1.6 -> {wide:.4f}"
+    )
+
+
+def test_the_tier_effect_survives_the_wrong_story(heterogeneous):
+    """The claim the study needs, under the assumption it cannot test.
+
+    Heterogeneity in returning distorts `ret` and invents `cease`, but both act
+    on the absent pool, which every active hunter reaches the same way
+    regardless of tier. The contrast between the two active states is left
+    close to the truth. Same bound as the life-table study, so the two can be
+    quoted together: within 15% of its own size, and never flipped.
+    """
+    truth, fits = heterogeneous
+    i1, i2 = PARAM_ORDER.index("out_tier1"), PARAM_ORDER.index("out_tier2")
+    true_effect = truth[i2] - truth[i1]
+
+    for frailty_sd, estimate in fits.items():
+        fitted_effect = estimate[i2] - estimate[i1]
+        relative = abs(fitted_effect - true_effect) / abs(true_effect)
+        assert relative < 0.15, (
+            f"frailty sd {frailty_sd}: tier effect {fitted_effect:+.3f} vs truth "
+            f"{true_effect:+.3f} ({relative:.0%} off)"
+        )
+        assert np.sign(fitted_effect) == np.sign(true_effect)
