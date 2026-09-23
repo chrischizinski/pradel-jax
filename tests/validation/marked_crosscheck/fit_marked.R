@@ -22,6 +22,9 @@ suppressMessages({
 
 here <- dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))))
 ch <- read.csv(file.path(here, "histories.csv"), colClasses = "character")
+# marked copies its C++/ADMB sources into the working directory and compiles
+# them there; keep that out of the repository.
+setwd(tempdir())
 
 proc <- process.data(ch, model = "MSCJS", strata.labels = c("A", "B", "C"))
 ddl <- make.design.data(proc)
