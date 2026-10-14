@@ -474,3 +474,98 @@ def test_a_parameter_made_irrelevant_by_another_is_found_and_excluded():
         covariance[np.ix_([0, 2], [0, 2])], np.linalg.inv(interior)
     )
     assert smallest > 0
+
+
+# --------------------------------------------------------------------------
+# Latent classes: self-selection into Tier II
+# --------------------------------------------------------------------------
+
+# An "avid" class: sits out less, returns more, and is far likelier to choose
+# Tier II. Nothing in the one-class model sees class, so it credits the avid
+# hunters' steadiness to the tier.
+AVID_SHIFTS = {
+    "out": -1.2,
+    "ret": 1.2,
+    "to_tier2": 1.0,
+    "switch_up": 1.5,
+    "switch_down": -1.2,
+}
+AVID_SHARE = 0.5
+
+
+def _simulate_two_classes(n, rng):
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    ages = rng.integers(12, 80, size=n)[:, None] + np.arange(N_INTERVALS)[None, :]
+    mortality = _mortality(ages, rng.random(n) < 0.9)
+    params = {k: jnp.asarray(v) for k, v in TRUTH.items() if k != "entry"}
+    params |= {k: jnp.asarray(v) for k, v in STEADY_ENTRY.items()}
+    avid = rng.random(n) < AVID_SHARE
+    shifted = dict(params)
+    for name in ("out_tier1", "out_tier1_post", "out_tier2"):
+        shifted[name] = params[name] + AVID_SHIFTS["out"]
+    for name in ("ret", "to_tier2", "switch_up", "switch_down"):
+        shifted[name] = params[name] + AVID_SHIFTS[name]
+    plain = np.asarray(
+        F.transition_matrices(params, jnp.asarray(mortality), avail, era)
+    )
+    keen = np.asarray(
+        F.transition_matrices(shifted, jnp.asarray(mortality), avail, era)
+    )
+    matrices = np.where(avid[:, None, None, None], keen, plain)
+    initial = np.zeros(N_STATES)
+    initial[[0, 1, 3]] = [INITIAL_TRUTH[k] for k in ("new", "tier1", "out")]
+
+    def code(states):
+        return np.where(
+            states == STATE_TIER1,
+            OBS_TIER1,
+            np.where(states == STATE_TIER2, OBS_TIER2, OBS_NONE),
+        )
+
+    states = (rng.random(n)[:, None] > np.cumsum(initial)).sum(axis=1)
+    history = np.zeros((n, len(YEARS)), dtype=np.int32)
+    history[:, 0] = code(states)
+    for t in range(1, len(YEARS)):
+        rows = matrices[np.arange(n), t - 1, states]
+        states = (rng.random(n)[:, None] > np.cumsum(rows, axis=1)).sum(axis=1)
+        history[:, t] = code(states)
+    seen = history.max(axis=1) > 0
+    return history[seen], mortality[seen]
+
+
+@pytest.fixture(scope="module")
+def two_classes():
+    history, mortality = _simulate_two_classes(60_000, np.random.default_rng(33))
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    return {
+        1: F.fit(history, mortality, avail, era),
+        2: F.fit(history, mortality, avail, era, n_classes=2),
+    }
+
+
+def test_one_class_is_misled_by_self_selection(two_classes):
+    """The scenario must actually bias the ordinary model, or the next test
+    proves nothing about correcting it."""
+    one = two_classes[1]
+    assert (
+        abs(one["tier_contrast"] - TRUE_CONTRAST) > 3 * one["tier_contrast_se"]
+    ), f"one-class contrast {one['tier_contrast']:+.3f} is not biased"
+
+
+def test_two_classes_recover_the_tier_contrast_under_self_selection(two_classes):
+    """When the classes are the real structure, the mixture recovers the tier
+    contrast, the class share, and the direction of every class shift -- the
+    avid class is found from the data, not assumed."""
+    two = two_classes[2]
+    assert two["converged"], two["message"]
+    assert (
+        abs(two["tier_contrast"] - TRUE_CONTRAST) < 3 * two["tier_contrast_se"]
+    ), f"two-class contrast {two['tier_contrast']:+.3f} vs {TRUE_CONTRAST:+.3f}"
+    shifts = two["class_shifts"][0]
+    # The avid class may come out as class 0 or class 1; orient by its sign.
+    sign = np.sign(shifts["to_tier2"])
+    for name, truth in AVID_SHIFTS.items():
+        assert np.sign(sign * shifts[name]) == np.sign(truth), (name, shifts)
+    share = two["class_weights"][1] if sign > 0 else two["class_weights"][0]
+    assert abs(share - AVID_SHARE) < 0.1, two["class_weights"]
+    assert two["log_likelihood"] > two_classes[1]["log_likelihood"]

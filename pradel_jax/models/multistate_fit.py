@@ -48,6 +48,8 @@ from .multistate import (
     STATE_TIER1,
     build_transition_matrices,
     conditional_log_likelihood,
+    forward_log_likelihood,
+    log_prob_ever_observed,
 )
 
 BEHAVIOUR = (
@@ -67,6 +69,11 @@ INITIAL_PARAMETERS = ("initial_new", "initial_out")
 # logits; "out" shifts sitting out in both tiers alike, so the tier contrast
 # is still a single number.
 AGE_PROCESSES = ("entry", "initial", "cease", "out", "ret")
+# What a latent class shifts: participation (sitting out, in both tiers alike,
+# and returning) and tier choice. A class that raises both Tier II choice and
+# participation is exactly the avidity that biases a single-class tier
+# contrast; the contrast itself stays one number shared by every class.
+CLASS_PROCESSES = ("out", "ret", "to_tier2", "switch_up", "switch_down")
 
 
 def parameter_names(
@@ -355,6 +362,9 @@ def fit(
     reference_band: Optional[int] = None,
     age_effects: Sequence[str] = (),
     female: Optional[np.ndarray] = None,
+    n_classes: int = 1,
+    class_starts: int = 4,
+    seed: int = 0,
 ) -> Dict:
     """Maximum-likelihood fit of the five-state model.
 
@@ -387,6 +397,17 @@ def fit(
             removed that. Simulation did not reproduce the inflation from their
             absence, so why it happened is not established.
         female: optional (n,) indicator; given, ``cease`` gets a female shift.
+        n_classes: number of latent hunter classes. Above 1, each class after
+            the first shifts every process in :data:`CLASS_PROCESSES`, and
+            the likelihood is the mixture over classes, conditioned on being
+            seen as a whole. In simulation, with avidity driving both tier
+            choice and participation, one class turned a true +0.30 tier
+            contrast into -0.13 while three classes gave +0.25 with or
+            without selection -- a stable ~-0.05 bias from approximating
+            continuous avidity with classes, in place of a sign flip.
+        class_starts, seed: random starts for the class shifts (the classes
+            are exchangeable and the likelihood is multimodal), drawn around
+            the one-class fit.
 
     Returns:
         dict with ``estimates`` and ``std_errors`` (logit scale, by name),
@@ -395,7 +416,8 @@ def fit(
         ``n_parameters``, ``n_individuals``, ``n_groups``, ``converged``,
         ``message``, ``at_boundary`` and ``start_log_likelihoods`` (every
         start tried; they should agree); ``initial`` when estimated and not
-        age-dependent; ``age_center`` and ``age_scale`` when ``ages`` is given.
+        age-dependent; ``age_center`` and ``age_scale`` when ``ages`` is given;
+        ``class_weights`` and ``class_shifts`` when ``n_classes`` > 1.
     """
     observations = np.asarray(observations)
     mortality = np.asarray(mortality, dtype=np.float64)
@@ -482,6 +504,13 @@ def fit(
         for vector in vector_names
         for b in kept_bands[vector]
     ]
+    n_structural = len(names)
+    class_names = [
+        f"class{k}_{process}"
+        for k in range(1, n_classes)
+        for process in CLASS_PROCESSES + ("weight",)
+    ]
+    names += class_names
     n_scalar, n_band = len(scalar_names), len(band_names)
     fixed_initial = None if estimate_initial else jnp.asarray(initial)
 
@@ -509,10 +538,14 @@ def fit(
         )
         return jax.vmap(lambda shift: initial_distribution(base + shift))(shifts)
 
-    def negative_log_likelihood(x):
-        params = unpack(x)
-        matrices = transition_matrices(
-            params,
+    def class_matrices(params, shift):
+        shifted = dict(params)
+        for name in ("out_tier1", "out_tier1_post", "out_tier2"):
+            shifted[name] = params[name] + shift["out"]
+        for name in ("ret", "to_tier2", "switch_up", "switch_down"):
+            shifted[name] = params[name] + shift[name]
+        return transition_matrices(
+            shifted,
             mortality_j,
             tier2_available,
             comparison_era,
@@ -520,9 +553,35 @@ def fit(
             band=band_j,
             female=female_j,
         )
-        per_group = jax.vmap(conditional_log_likelihood)(
-            obs_j, matrices, initial_weights(params)
-        )
+
+    width = len(CLASS_PROCESSES) + 1
+
+    def negative_log_likelihood(x):
+        params = unpack(x)
+        pi = initial_weights(params)
+        if n_classes == 1:
+            matrices = class_matrices(params, dict.fromkeys(CLASS_PROCESSES, 0.0))
+            per_group = jax.vmap(conditional_log_likelihood)(obs_j, matrices, pi)
+            return -jnp.sum(counts_j * per_group)
+        block = x[n_structural:].reshape(n_classes - 1, width)
+        log_weights = jax.nn.log_softmax(jnp.concatenate([jnp.zeros(1), block[:, -1]]))
+        forward, seen = [], []
+        for k in range(n_classes):
+            shift = (
+                dict.fromkeys(CLASS_PROCESSES, 0.0)
+                if k == 0
+                else dict(zip(CLASS_PROCESSES, block[k - 1, :-1]))
+            )
+            matrices = class_matrices(params, shift)
+            forward.append(
+                log_weights[k] + jax.vmap(forward_log_likelihood)(obs_j, matrices, pi)
+            )
+            seen.append(log_weights[k] + jax.vmap(log_prob_ever_observed)(matrices, pi))
+        # Condition the mixture as a whole on being seen: dividing each class
+        # by its own probability of being seen would reweight the classes.
+        per_group = jax.scipy.special.logsumexp(
+            jnp.stack(forward), axis=0
+        ) - jax.scipy.special.logsumexp(jnp.stack(seen), axis=0)
         return -jnp.sum(counts_j * per_group)
 
     objective = jax.jit(jax.value_and_grad(negative_log_likelihood))
@@ -530,6 +589,29 @@ def fit(
     starts = []
     if start is not None:
         starts.append(np.asarray(start, float))
+    elif n_classes > 1:
+        # Every start keeps the one-class fit for the structural parameters
+        # and draws the class shifts; the classes start equally weighted.
+        single = fit(
+            observations,
+            mortality,
+            tier2_available,
+            comparison_era,
+            initial=initial,
+            entry=entry,
+            ages=ages,
+            age_bands=age_bands,
+            band_labels=band_labels,
+            reference_band=reference_band,
+            age_effects=age_effects,
+            female=female,
+        )
+        base = np.array([single["estimates"][name] for name in names[:n_structural]])
+        rng = np.random.default_rng(seed)
+        for _ in range(class_starts):
+            block = rng.normal(0.0, 1.0, size=(n_classes - 1, width))
+            block[:, -1] = 0.0
+            starts.append(np.concatenate([base, block.ravel()]))
     else:
         cold = np.full(len(names), -1.5)
         cold[n_scalar:] = 0.0
@@ -610,4 +692,13 @@ def fit(
     if ages is not None:
         out["age_center"] = age_center
         out["age_scale"] = age_scale
+    if n_classes > 1:
+        block = result.x[n_structural:].reshape(n_classes - 1, width)
+        weights = np.asarray(
+            jax.nn.softmax(jnp.concatenate([jnp.zeros(1), jnp.asarray(block[:, -1])]))
+        )
+        out["class_weights"] = weights.tolist()
+        out["class_shifts"] = [
+            dict(zip(CLASS_PROCESSES, row[:-1].tolist())) for row in block
+        ]
     return out
