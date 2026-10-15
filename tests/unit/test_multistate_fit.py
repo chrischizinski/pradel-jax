@@ -569,3 +569,116 @@ def test_two_classes_recover_the_tier_contrast_under_self_selection(two_classes)
     share = two["class_weights"][1] if sign > 0 else two["class_weights"][0]
     assert abs(share - AVID_SHARE) < 0.1, two["class_weights"]
     assert two["log_likelihood"] > two_classes[1]["log_likelihood"]
+
+
+# --------------------------------------------------------------------------
+# Continuous avidity: self-selection without choosing a number of classes
+# --------------------------------------------------------------------------
+
+# Loadings of a standard-normal avidity: avid hunters sit out less, return
+# more and are likelier to choose and keep Tier II. On real data the tier
+# contrast kept moving as classes were added (K = 1..4), which is what a
+# continuous trait approximated by classes would do; this model integrates
+# the trait out instead.
+AVIDITY_LOADINGS = {
+    "out": -0.8,
+    "ret": 0.8,
+    "to_tier2": 0.8,
+    "switch_up": 0.8,
+    "switch_down": -0.8,
+}
+
+
+def _simulate_avidity(n, rng):
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    ages = rng.integers(12, 80, size=n)[:, None] + np.arange(N_INTERVALS)[None, :]
+    mortality = _mortality(ages, rng.random(n) < 0.9)
+    params = {k: jnp.asarray(v) for k, v in TRUTH.items() if k != "entry"}
+    params |= {k: jnp.asarray(v) for k, v in STEADY_ENTRY.items()}
+    # Avidity on a 0.05 grid: continuous for this purpose, and each grid value
+    # needs its matrices built only once.
+    avidity = np.round(rng.normal(size=n) / 0.05) * 0.05
+    matrices = np.empty((n, N_INTERVALS, N_STATES, N_STATES))
+    for value in np.unique(avidity):
+        rows = avidity == value
+        shifted = dict(params)
+        for name in ("out_tier1", "out_tier1_post", "out_tier2"):
+            shifted[name] = params[name] + value * AVIDITY_LOADINGS["out"]
+        for name in ("ret", "to_tier2", "switch_up", "switch_down"):
+            shifted[name] = params[name] + value * AVIDITY_LOADINGS[name]
+        matrices[rows] = np.asarray(
+            F.transition_matrices(shifted, jnp.asarray(mortality[rows]), avail, era)
+        )
+    initial = np.zeros(N_STATES)
+    initial[[0, 1, 3]] = [INITIAL_TRUTH[k] for k in ("new", "tier1", "out")]
+
+    def code(states):
+        return np.where(
+            states == STATE_TIER1,
+            OBS_TIER1,
+            np.where(states == STATE_TIER2, OBS_TIER2, OBS_NONE),
+        )
+
+    states = (rng.random(n)[:, None] > np.cumsum(initial)).sum(axis=1)
+    history = np.zeros((n, len(YEARS)), dtype=np.int32)
+    history[:, 0] = code(states)
+    for t in range(1, len(YEARS)):
+        rows = matrices[np.arange(n), t - 1, states]
+        states = (rng.random(n)[:, None] > np.cumsum(rows, axis=1)).sum(axis=1)
+        history[:, t] = code(states)
+    seen = history.max(axis=1) > 0
+    return history[seen], mortality[seen]
+
+
+@pytest.fixture(scope="module")
+def avid():
+    history, mortality = _simulate_avidity(60_000, np.random.default_rng(51))
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    one = F.fit(history, mortality, avail, era)
+    common = dict(avidity=1, class_starts=2, base_estimates=one["estimates"])
+    return {
+        "one": one,
+        "avidity": F.fit(history, mortality, avail, era, **common),
+        "avidity_coarse": F.fit(
+            history, mortality, avail, era, quadrature_nodes=5, **common
+        ),
+    }
+
+
+def test_continuous_avidity_misleads_the_one_class_model(avid):
+    """Without this the recovery test below would prove nothing."""
+    one = avid["one"]
+    assert (
+        abs(one["tier_contrast"] - TRUE_CONTRAST) > 3 * one["tier_contrast_se"]
+    ), f"one-class contrast {one['tier_contrast']:+.3f} is not biased"
+
+
+def test_continuous_avidity_recovers_the_tier_contrast_and_loadings(avid):
+    """Integrating avidity out recovers the contrast that self-selection hid,
+    and the loadings, up to the arbitrary sign of the trait."""
+    fit = avid["avidity"]
+    assert fit["converged"], fit["message"]
+    assert (
+        abs(fit["tier_contrast"] - TRUE_CONTRAST) < 3 * fit["tier_contrast_se"]
+    ), f"avidity contrast {fit['tier_contrast']:+.3f} vs {TRUE_CONTRAST:+.3f}"
+    sign = np.sign(fit["estimates"]["avidity_ret"])
+    for name, truth in AVIDITY_LOADINGS.items():
+        estimate = sign * fit["estimates"][f"avidity_{name}"]
+        se = fit["std_errors"][f"avidity_{name}"]
+        assert abs(estimate - truth) < max(3 * se, 0.15), (name, estimate, se)
+    assert fit["log_likelihood"] > avid["one"]["log_likelihood"]
+
+
+def test_the_quadrature_has_converged(avid):
+    """Five nodes and nine give the same answer, so nine is not an
+    approximation that moves the contrast."""
+    fine, coarse = avid["avidity"], avid["avidity_coarse"]
+    assert abs(fine["log_likelihood"] - coarse["log_likelihood"]) < 1.0
+    assert abs(fine["tier_contrast"] - coarse["tier_contrast"]) < 0.01
+
+
+def test_avidity_and_classes_cannot_be_combined():
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    history = np.ones((3, len(YEARS)), dtype=np.int32)
+    with pytest.raises(ValueError, match="not both"):
+        F.fit(history, np.zeros((3, N_INTERVALS)), avail, era, n_classes=2, avidity=1)

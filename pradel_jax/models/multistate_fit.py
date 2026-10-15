@@ -34,6 +34,8 @@ against Tier I in the same years. It is an association, not the effect of the
 tier -- see ``test_self_selection_can_reverse_the_tier_effect``.
 """
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Sequence
 
 import jax
@@ -74,6 +76,11 @@ AGE_PROCESSES = ("entry", "initial", "cease", "out", "ret")
 # participation is exactly the avidity that biases a single-class tier
 # contrast; the contrast itself stays one number shared by every class.
 CLASS_PROCESSES = ("out", "ret", "to_tier2", "switch_up", "switch_down")
+# A continuous avidity loads on the same processes. Its second dimension, when
+# fitted, loads on tier choice only: the first then carries whatever avidity
+# shares between participation and tier choice, the second the taste for
+# Tier II that is unrelated to participation.
+TIER_PROCESSES = ("to_tier2", "switch_up", "switch_down")
 
 
 def parameter_names(
@@ -365,6 +372,10 @@ def fit(
     n_classes: int = 1,
     class_starts: int = 4,
     seed: int = 0,
+    base_estimates: Optional[Dict[str, float]] = None,
+    n_workers: int = 1,
+    avidity: int = 0,
+    quadrature_nodes: int = 9,
 ) -> Dict:
     """Maximum-likelihood fit of the five-state model.
 
@@ -405,9 +416,25 @@ def fit(
             contrast into -0.13 while three classes gave +0.25 with or
             without selection -- a stable ~-0.05 bias from approximating
             continuous avidity with classes, in place of a sign flip.
-        class_starts, seed: random starts for the class shifts (the classes
-            are exchangeable and the likelihood is multimodal), drawn around
-            the one-class fit.
+        class_starts, seed: random starts for the class shifts or avidity
+            loadings (classes are exchangeable and the likelihood is
+            multimodal), drawn around the one-class fit.
+        base_estimates: estimates of the same model with one class (a
+            previous fit's ``estimates``); given, the class starts use them in
+            place of refitting the one-class model.
+        avidity: dimensions of a continuous, normally distributed avidity
+            (0, 1 or 2) in place of latent classes. Each hunter's avidity
+            shifts every process in :data:`CLASS_PROCESSES` by an estimated
+            loading (``avidity_<process>``); a second dimension loads on
+            :data:`TIER_PROCESSES` only (``avidity2_<process>``). Integrated
+            out by Gauss-Hermite quadrature, conditioned on being seen as a
+            whole as the class mixture is. The sign of each dimension is
+            arbitrary; the tier contrast does not depend on it.
+        quadrature_nodes: nodes per avidity dimension (2 dimensions use the
+            product grid, nodes squared).
+        n_workers: starts optimised at once, in threads. JAX releases the
+            GIL while it computes, so threads overlap; the result does not
+            depend on it.
 
     Returns:
         dict with ``estimates`` and ``std_errors`` (logit scale, by name),
@@ -417,7 +444,9 @@ def fit(
         ``message``, ``at_boundary`` and ``start_log_likelihoods`` (every
         start tried; they should agree); ``initial`` when estimated and not
         age-dependent; ``age_center`` and ``age_scale`` when ``ages`` is given;
-        ``class_weights`` and ``class_shifts`` when ``n_classes`` > 1.
+        ``class_weights`` and ``class_shifts`` when ``n_classes`` > 1;
+        ``base_estimates`` when ``n_classes`` > 1 or ``avidity`` > 0;
+        ``timings`` (seconds: ``base_fit``, ``starts``, ``hessian``).
     """
     observations = np.asarray(observations)
     mortality = np.asarray(mortality, dtype=np.float64)
@@ -505,12 +534,33 @@ def fit(
         for b in kept_bands[vector]
     ]
     n_structural = len(names)
+    if avidity not in (0, 1, 2):
+        raise ValueError("avidity must be 0, 1 or 2")
+    if avidity and n_classes > 1:
+        raise ValueError("fit latent classes or a continuous avidity, not both")
     class_names = [
         f"class{k}_{process}"
         for k in range(1, n_classes)
         for process in CLASS_PROCESSES + ("weight",)
     ]
+    class_names += [f"avidity_{p}" for p in CLASS_PROCESSES] if avidity else []
+    class_names += [f"avidity2_{p}" for p in TIER_PROCESSES] if avidity == 2 else []
     names += class_names
+    mixture = n_classes > 1 or avidity > 0
+    if avidity:
+        nodes, node_weights = np.polynomial.hermite_e.hermegauss(quadrature_nodes)
+        grid = np.array(np.meshgrid(*[nodes] * avidity, indexing="ij")).reshape(
+            avidity, -1
+        ).T
+        grid_weights = np.prod(
+            np.array(np.meshgrid(*[node_weights] * avidity, indexing="ij")).reshape(
+                avidity, -1
+            ),
+            axis=0,
+        )
+        avidity_nodes = jnp.asarray(grid)  # (M, avidity), standard normal
+        avidity_log_weights = jnp.asarray(np.log(grid_weights / grid_weights.sum()))
+        tier_rows = [CLASS_PROCESSES.index(p) for p in TIER_PROCESSES]
     n_scalar, n_band = len(scalar_names), len(band_names)
     fixed_initial = None if estimate_initial else jnp.asarray(initial)
 
@@ -556,61 +606,91 @@ def fit(
 
     width = len(CLASS_PROCESSES) + 1
 
+    def mixture_components(x):
+        """Log weight and process shifts of every mixture component: the
+        classes, or the quadrature nodes of the avidity."""
+        if n_classes > 1:
+            block = x[n_structural:].reshape(n_classes - 1, width)
+            log_weights = jax.nn.log_softmax(
+                jnp.concatenate([jnp.zeros(1), block[:, -1]])
+            )
+            shifts = jnp.concatenate(
+                [jnp.zeros((1, len(CLASS_PROCESSES))), block[:, :-1]]
+            )
+            return log_weights, shifts
+        loadings = jnp.zeros((len(CLASS_PROCESSES), avidity))
+        loadings = loadings.at[:, 0].set(
+            x[n_structural : n_structural + len(CLASS_PROCESSES)]
+        )
+        if avidity == 2:
+            loadings = loadings.at[jnp.array(tier_rows), 1].set(
+                x[n_structural + len(CLASS_PROCESSES) :]
+            )
+        return avidity_log_weights, avidity_nodes @ loadings.T
+
     def negative_log_likelihood(x):
         params = unpack(x)
         pi = initial_weights(params)
-        if n_classes == 1:
+        if not mixture:
             matrices = class_matrices(params, dict.fromkeys(CLASS_PROCESSES, 0.0))
             per_group = jax.vmap(conditional_log_likelihood)(obs_j, matrices, pi)
             return -jnp.sum(counts_j * per_group)
-        block = x[n_structural:].reshape(n_classes - 1, width)
-        log_weights = jax.nn.log_softmax(jnp.concatenate([jnp.zeros(1), block[:, -1]]))
-        forward, seen = [], []
-        for k in range(n_classes):
-            shift = (
-                dict.fromkeys(CLASS_PROCESSES, 0.0)
-                if k == 0
-                else dict(zip(CLASS_PROCESSES, block[k - 1, :-1]))
+        log_weights, shifts = mixture_components(x)
+
+        def component(shift):
+            matrices = class_matrices(params, dict(zip(CLASS_PROCESSES, shift)))
+            return (
+                jax.vmap(forward_log_likelihood)(obs_j, matrices, pi),
+                jax.vmap(log_prob_ever_observed)(matrices, pi),
             )
-            matrices = class_matrices(params, shift)
-            forward.append(
-                log_weights[k] + jax.vmap(forward_log_likelihood)(obs_j, matrices, pi)
-            )
-            seen.append(log_weights[k] + jax.vmap(log_prob_ever_observed)(matrices, pi))
-        # Condition the mixture as a whole on being seen: dividing each class
-        # by its own probability of being seen would reweight the classes.
+
+        # One component at a time keeps memory to one component's matrices.
+        forward, seen = jax.lax.map(component, shifts)
+        # Condition the mixture as a whole on being seen: dividing each
+        # component by its own probability of being seen would reweight them.
         per_group = jax.scipy.special.logsumexp(
-            jnp.stack(forward), axis=0
-        ) - jax.scipy.special.logsumexp(jnp.stack(seen), axis=0)
+            log_weights[:, None] + forward, axis=0
+        ) - jax.scipy.special.logsumexp(log_weights[:, None] + seen, axis=0)
         return -jnp.sum(counts_j * per_group)
 
     objective = jax.jit(jax.value_and_grad(negative_log_likelihood))
 
+    timings = {"base_fit": 0.0}
     starts = []
     if start is not None:
         starts.append(np.asarray(start, float))
-    elif n_classes > 1:
+    elif mixture:
         # Every start keeps the one-class fit for the structural parameters
-        # and draws the class shifts; the classes start equally weighted.
-        single = fit(
-            observations,
-            mortality,
-            tier2_available,
-            comparison_era,
-            initial=initial,
-            entry=entry,
-            ages=ages,
-            age_bands=age_bands,
-            band_labels=band_labels,
-            reference_band=reference_band,
-            age_effects=age_effects,
-            female=female,
-        )
-        base = np.array([single["estimates"][name] for name in names[:n_structural]])
+        # and draws the class shifts (classes start equally weighted) or the
+        # avidity loadings.
+        if base_estimates is None:
+            t0 = time.time()
+            base_estimates = fit(
+                observations,
+                mortality,
+                tier2_available,
+                comparison_era,
+                initial=initial,
+                entry=entry,
+                ages=ages,
+                age_bands=age_bands,
+                band_labels=band_labels,
+                reference_band=reference_band,
+                age_effects=age_effects,
+                female=female,
+            )["estimates"]
+            timings["base_fit"] = time.time() - t0
+        missing = [n for n in names[:n_structural] if n not in base_estimates]
+        if missing:
+            raise ValueError(f"base_estimates lacks {missing}")
+        base = np.array([base_estimates[name] for name in names[:n_structural]])
         rng = np.random.default_rng(seed)
         for _ in range(class_starts):
-            block = rng.normal(0.0, 1.0, size=(n_classes - 1, width))
-            block[:, -1] = 0.0
+            if n_classes > 1:
+                block = rng.normal(0.0, 1.0, size=(n_classes - 1, width))
+                block[:, -1] = 0.0
+            else:
+                block = rng.normal(0.0, 0.5, size=len(class_names))
             starts.append(np.concatenate([base, block.ravel()]))
     else:
         cold = np.full(len(names), -1.5)
@@ -623,6 +703,7 @@ def fit(
             # Staged start: the same model without the age and sex effects,
             # extended with zeros. Richer models here have local maxima, and
             # one start is not enough to trust.
+            t0 = time.time()
             simpler = fit(
                 observations,
                 mortality,
@@ -632,15 +713,25 @@ def fit(
                 entry=entry,
                 ages=ages,
             )
+            timings["base_fit"] = time.time() - t0
             staged = np.zeros(len(names))
             for i, name in enumerate(scalar_names):
                 staged[i] = simpler["estimates"].get(name, 0.0)
             starts.append(staged)
 
-    results = [_minimize(objective, x0) for x0 in starts]
+    def timed_minimize(x0):
+        t0 = time.time()
+        return _minimize(objective, x0), time.time() - t0
+
+    with ThreadPoolExecutor(max_workers=max(1, int(n_workers))) as pool:
+        timed = list(pool.map(timed_minimize, starts))
+    results = [r for r, _ in timed]
+    timings["starts"] = [t for _, t in timed]
     result = max(results, key=lambda r: -r.fun)
 
+    t0 = time.time()
     hessian = np.asarray(jax.hessian(negative_log_likelihood)(jnp.asarray(result.x)))
+    timings["hessian"] = time.time() - t0
     boundary = [
         name
         for name, value in zip(names, result.x)
@@ -679,6 +770,7 @@ def fit(
         "dropped_bands": dropped_bands,
         "not_estimable": not_estimable,
         "hessian_min_eigenvalue": smallest,
+        "timings": timings,
     }
     if estimate_initial and "initial" not in age_effects:
         pi = np.asarray(
@@ -701,4 +793,8 @@ def fit(
         out["class_shifts"] = [
             dict(zip(CLASS_PROCESSES, row[:-1].tolist())) for row in block
         ]
+    if mixture:
+        # The one-class estimates the starts were drawn around, so a caller
+        # fitting several class counts can pass them on as base_estimates.
+        out["base_estimates"] = dict(base_estimates) if base_estimates else None
     return out
