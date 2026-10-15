@@ -345,6 +345,23 @@ def group_records(observations: np.ndarray, *per_interval: np.ndarray):
 OPTIMIZER_OPTIONS = {"maxiter": 20000, "gtol": 1e-5, "ftol": 1e-15, "maxls": 50}
 
 
+def _hessian(f, x, batch: int = 8) -> np.ndarray:
+    """Hessian of ``f`` at ``x``, built ``batch`` columns at a time.
+
+    ``jax.hessian`` pushes every direction through the gradient at once, so
+    its memory is the number of parameters times the gradient's; for a
+    mixture over nine quadrature nodes that exhausted 18 GB. Here each column
+    is a Hessian-vector product (forward over reverse) and only ``batch`` are
+    in memory together.
+    """
+    grad = jax.grad(f)
+    hvp = jax.jit(jax.vmap(lambda v: jax.jvp(grad, (x,), (v,))[1]))
+    eye = jnp.eye(x.shape[0])
+    columns = [np.asarray(hvp(eye[i : i + batch])) for i in range(0, x.shape[0], batch)]
+    hessian = np.concatenate(columns, axis=0)
+    return 0.5 * (hessian + hessian.T)
+
+
 def _minimize(objective, x0):
     def scipy_objective(x):
         value, grad = objective(jnp.asarray(x))
@@ -644,8 +661,9 @@ def fit(
                 jax.vmap(log_prob_ever_observed)(matrices, pi),
             )
 
-        # One component at a time keeps memory to one component's matrices.
-        forward, seen = jax.lax.map(component, shifts)
+        # One component at a time, and recomputed in the backward pass rather
+        # than stored, so memory is one component's whatever their number.
+        forward, seen = jax.lax.map(jax.checkpoint(component), shifts)
         # Condition the mixture as a whole on being seen: dividing each
         # component by its own probability of being seen would reweight them.
         per_group = jax.scipy.special.logsumexp(
@@ -730,7 +748,7 @@ def fit(
     result = max(results, key=lambda r: -r.fun)
 
     t0 = time.time()
-    hessian = np.asarray(jax.hessian(negative_log_likelihood)(jnp.asarray(result.x)))
+    hessian = _hessian(negative_log_likelihood, jnp.asarray(result.x))
     timings["hessian"] = time.time() - t0
     boundary = [
         name

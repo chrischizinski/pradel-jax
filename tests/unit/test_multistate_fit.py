@@ -682,3 +682,17 @@ def test_avidity_and_classes_cannot_be_combined():
     history = np.ones((3, len(YEARS)), dtype=np.int32)
     with pytest.raises(ValueError, match="not both"):
         F.fit(history, np.zeros((3, N_INTERVALS)), avail, era, n_classes=2, avidity=1)
+
+
+def test_the_chunked_hessian_is_the_hessian():
+    """The Hessian is built a few columns at a time to bound its memory (the
+    one-shot version exhausted 18 GB on a nine-node mixture); it must still
+    be the exact Hessian, across a chunk boundary and non-symmetric terms."""
+
+    def f(x):
+        return jnp.sum(jnp.sin(x) * jnp.roll(x, 1) ** 2) + jnp.prod(x[:3]) + x @ x
+
+    x = jnp.linspace(-1.0, 1.5, 11)
+    np.testing.assert_allclose(
+        F._hessian(f, x, batch=4), np.asarray(jax.hessian(f)(x)), atol=1e-12
+    )
