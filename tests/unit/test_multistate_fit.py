@@ -677,6 +677,53 @@ def test_the_quadrature_has_converged(avid):
     assert abs(fine["tier_contrast"] - coarse["tier_contrast"]) < 0.01
 
 
+def test_a_warm_start_returns_the_same_maximum(avid):
+    """A refit started from a previous fit's estimates (by name, as the runner
+    reads them back from a results file) must land on that fit's maximum, with
+    that one start only: the point of a warm start on a finer quadrature is to
+    skip the random starts, not to find a different answer."""
+    fit = avid["avidity"]
+    history, mortality = _simulate_avidity(60_000, np.random.default_rng(51))
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    warm = F.fit(history, mortality, avail, era, avidity=1, start=fit["estimates"])
+    assert len(warm["start_log_likelihoods"]) == 1
+    assert abs(warm["log_likelihood"] - fit["log_likelihood"]) < 1e-4
+    assert abs(warm["tier_contrast"] - fit["tier_contrast"]) < 1e-4
+
+
+def test_a_named_start_must_name_every_parameter():
+    """A start read from another model's results (e.g. one avidity dimension
+    for a two-dimensional fit) would silently leave parameters undefined."""
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    history = np.ones((3, len(YEARS)), dtype=np.int32)
+    with pytest.raises(ValueError, match="start lacks"):
+        F.fit(
+            history, np.zeros((3, N_INTERVALS)), avail, era,
+            avidity=1, start={"ret": 0.0},
+        )
+
+
+def test_one_node_count_is_that_count_in_every_dimension():
+    """quadrature_nodes=q and (q, q) are the same rule, so per-dimension
+    counts change nothing for the fits already run with a single count."""
+    history, mortality = _simulate_avidity(3_000, np.random.default_rng(7))
+    avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
+    one = F.fit(history, mortality, avail, era)
+    names = F.CLASS_PROCESSES
+    start = dict(one["estimates"])
+    start |= {f"avidity_{p}": 0.5 for p in names}
+    start |= {f"avidity2_{p}": 0.3 for p in F.TIER_PROCESSES}
+    common = dict(avidity=2, start=start)
+    single = F.fit(history, mortality, avail, era, quadrature_nodes=3, **common)
+    pair = F.fit(history, mortality, avail, era, quadrature_nodes=(3, 3), **common)
+    assert single["log_likelihood"] == pytest.approx(pair["log_likelihood"], abs=1e-8)
+    # And a count per dimension is a different rule, not ignored.
+    uneven = F.fit(history, mortality, avail, era, quadrature_nodes=(7, 3), **common)
+    assert abs(uneven["log_likelihood"] - pair["log_likelihood"]) > 1e-6
+    with pytest.raises(ValueError, match="one per avidity dimension"):
+        F.fit(history, mortality, avail, era, quadrature_nodes=(3, 3, 3), **common)
+
+
 def test_avidity_and_classes_cannot_be_combined():
     avail, era = F.regime_indicators(YEARS, FIRST_TIER2_YEAR)
     history = np.ones((3, len(YEARS)), dtype=np.int32)

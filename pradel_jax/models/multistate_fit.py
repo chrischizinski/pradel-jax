@@ -36,7 +36,7 @@ tier -- see ``test_self_selection_can_reverse_the_tier_effect``.
 
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence, Union
 
 import jax
 import jax.numpy as jnp
@@ -380,7 +380,7 @@ def fit(
     initial: Optional[np.ndarray] = None,
     entry: str = "annual",
     ages: Optional[np.ndarray] = None,
-    start: Optional[np.ndarray] = None,
+    start: Optional[Union[np.ndarray, Mapping[str, float]]] = None,
     age_bands: Optional[np.ndarray] = None,
     band_labels: Optional[Sequence[str]] = None,
     reference_band: Optional[int] = None,
@@ -392,7 +392,7 @@ def fit(
     base_estimates: Optional[Dict[str, float]] = None,
     n_workers: int = 1,
     avidity: int = 0,
-    quadrature_nodes: int = 9,
+    quadrature_nodes: Union[int, Sequence[int]] = 9,
 ) -> Dict:
     """Maximum-likelihood fit of the five-state model.
 
@@ -409,7 +409,10 @@ def fit(
         ages: optional (n, T - 1) age over each interval. Given, cessation gets
             a slope on age, standardised by the mean and SD of these values
             (returned as ``age_center`` and ``age_scale``).
-        start: optional starting logits.
+        start: optional starting logits: an array in parameter order, or a
+            mapping by name (a previous fit's ``estimates``, e.g. the same
+            model on a coarser quadrature) that must name every parameter.
+            Given, it is the only start: no random starts are drawn.
         age_bands: optional (n, T - 1) integer age band over each interval,
             indexing ``band_labels``. A hunter of unknown age should get a band
             of its own rather than a guessed age: a guessed age puts them in a
@@ -447,8 +450,13 @@ def fit(
             out by Gauss-Hermite quadrature, conditioned on being seen as a
             whole as the class mixture is. The sign of each dimension is
             arbitrary; the tier contrast does not depend on it.
-        quadrature_nodes: nodes per avidity dimension (2 dimensions use the
-            product grid, nodes squared).
+        quadrature_nodes: nodes per avidity dimension: one count for every
+            dimension, or one per dimension (2 dimensions use the product
+            grid). On the SD data the first dimension, with loadings near +-2
+            on sitting out and returning, needed about 31 nodes (9 left the
+            log-likelihood about 300 short), while the second, on tier choice
+            only, had settled by 5-7; a per-dimension count spends nodes where
+            they are needed.
         n_workers: starts optimised at once, in threads. JAX releases the
             GIL while it computes, so threads overlap; the result does not
             depend on it.
@@ -565,14 +573,21 @@ def fit(
     names += class_names
     mixture = n_classes > 1 or avidity > 0
     if avidity:
-        nodes, node_weights = np.polynomial.hermite_e.hermegauss(quadrature_nodes)
-        grid = np.array(np.meshgrid(*[nodes] * avidity, indexing="ij")).reshape(
-            avidity, -1
-        ).T
+        per_dimension = np.atleast_1d(np.asarray(quadrature_nodes, dtype=int))
+        if per_dimension.size == 1:
+            per_dimension = np.repeat(per_dimension, avidity)
+        if per_dimension.size != avidity:
+            raise ValueError(
+                "quadrature_nodes needs one count, or one per avidity dimension"
+            )
+        rules = [np.polynomial.hermite_e.hermegauss(int(q)) for q in per_dimension]
+        grid = np.array(
+            np.meshgrid(*[nodes for nodes, _ in rules], indexing="ij")
+        ).reshape(avidity, -1).T
         grid_weights = np.prod(
-            np.array(np.meshgrid(*[node_weights] * avidity, indexing="ij")).reshape(
-                avidity, -1
-            ),
+            np.array(
+                np.meshgrid(*[weights for _, weights in rules], indexing="ij")
+            ).reshape(avidity, -1),
             axis=0,
         )
         avidity_nodes = jnp.asarray(grid)  # (M, avidity), standard normal
@@ -676,6 +691,11 @@ def fit(
     timings = {"base_fit": 0.0}
     starts = []
     if start is not None:
+        if isinstance(start, Mapping):
+            missing = [name for name in names if name not in start]
+            if missing:
+                raise ValueError(f"start lacks {missing}")
+            start = [start[name] for name in names]
         starts.append(np.asarray(start, float))
     elif mixture:
         # Every start keeps the one-class fit for the structural parameters
