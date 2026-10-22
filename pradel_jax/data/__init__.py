@@ -16,6 +16,7 @@ from .sampling import (
 )
 from .processor import DataProcessor
 from .validator import DataValidator
+from .grouped import group_data_context
 
 __all__ = [
     "DataFormatAdapter",
@@ -30,4 +31,5 @@ __all__ = [
     "get_sampling_summary",
     "DataProcessor",
     "DataValidator",
+    "group_data_context",
 ]
